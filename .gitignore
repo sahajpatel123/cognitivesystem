@@ -1,0 +1,30 @@
+# Environment and secrets
+.env
+.env.*
+.venv/
+venv/
+
+# OS / tooling noise
+.DS_Store
+__pycache__/
+.pytest_cache/
+coverage/
+*.log
+
+# Build artifacts
+dist/
+build/
+
+# Node/Next artifacts
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+
+# TypeScript/Next generated files
+next-env.d.ts
+frontend/next-env.d.ts
+
+# IDE/editor
+.idea/
+.vscode/
