@@ -117,6 +117,11 @@ export const PRODUCT_NAV_LINKS: MarketingNavLink[] = [
     helper: "Tour the calm, public-facing experience.",
   },
   {
+    label: "Chat",
+    href: "/product/chat",
+    helper: "Governed text-in/text-out surface.",
+  },
+  {
     label: "How it works",
     href: "/product#flow",
     helper: "Follow the three-step story for newcomers.",
