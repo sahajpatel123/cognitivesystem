@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "test:ui:phase13": "playwright test frontend/tests/phase13_ui_abuse.spec.ts",
+    "test:ui:phase14": "playwright test frontend/tests/phase14_ui_attack.spec.ts",
+    "test:ui:full": "playwright test"
   },
   "dependencies": {
     "next": "14.2.3",
