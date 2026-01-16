@@ -37,7 +37,7 @@ def build_reasoning_prompt(user: UserMessage, hypotheses: HypothesisSet) -> str:
     return f"USER: {user.text}\nHYPOTHESES: {hyp_str}"
 
 
-def interpret_reasoning_output(raw: str, current_h: HypothesisSet) -> ReasoningOutput:
+def interpret_reasoning_output(raw: str | None, current_h: HypothesisSet) -> ReasoningOutput:
     """Interpret raw reasoning into proposed hypotheses and an expression plan.
 
     MCI behavior:
@@ -49,7 +49,7 @@ def interpret_reasoning_output(raw: str, current_h: HypothesisSet) -> ReasoningO
     - proposed_hypotheses: candidate set for clamped update.
     - plan: the only structure passed to expression.
     """
-    if not raw.strip():
+    if raw is None or not isinstance(raw, str) or not raw.strip():
         # Hard failure: empty reasoning is a contract violation.
         raise RuntimeError("Reasoning model returned empty output.")
 

@@ -2,8 +2,8 @@ import time
 
 import pytest
 
-from mci_backend.app import memory
-from mci_backend.app.models import HypothesisSet, Hypothesis
+from backend.mci_backend.app import memory
+from backend.mci_backend.app.models import Hypothesis, HypothesisSet
 
 
 def test_cross_session_memory_is_isolated():

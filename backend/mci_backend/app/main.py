@@ -21,7 +21,7 @@ from typing import Dict, Any
 from .models import UserMessage
 from . import memory, reasoning, expression, invariants
 from . import audit, observability
-from .debug_events import StageAuditEvent
+from .debug_events import InvariantResult, StageAuditEvent
 from ..accountability import (
     AccountabilityClass,
     DecisionCategory,
@@ -105,6 +105,23 @@ def handle_request(payload: Dict[str, Any]) -> Dict[str, Any]:
         try:
             reasoning_out = reasoning.run_reasoning(user, current_h)
         except Exception as e:  # noqa: BLE001
+            observability.add_invariants(
+                record,
+                [
+                    InvariantResult(
+                        invariant_id="reasoning.internal_trace_non_empty",
+                        description="internal reasoning trace must be non-empty",
+                        passed=False,
+                        failure_reason=str(e),
+                    ),
+                    InvariantResult(
+                        invariant_id="reasoning.plan_produced",
+                        description="ExpressionPlan with at least one segment must be produced",
+                        passed=False,
+                        failure_reason=str(e),
+                    ),
+                ],
+            )
             observability.add_stage_event(
                 record,
                 StageAuditEvent(
@@ -131,7 +148,13 @@ def handle_request(payload: Dict[str, Any]) -> Dict[str, Any]:
         )
 
         # Invariants: ensure a valid plan exists (hard-fail on violation) and record results.
-        invariants.assert_stage_isolation(reasoning_out)
+        try:
+            invariants.assert_stage_isolation(reasoning_out)
+        except Exception as e:  # noqa: BLE001
+            observability.add_invariants(record, audit.check_reasoning_invariants(reasoning_out))
+            observability.set_hard_failure(record, str(e))
+            raise
+
         observability.add_invariants(record, audit.check_reasoning_invariants(reasoning_out))
         trace = evidence_runtime.append_rule_evidence(
             trace,
@@ -203,6 +226,17 @@ def handle_request(payload: Dict[str, Any]) -> Dict[str, Any]:
         try:
             reply = expression.render_reply(reasoning_out.plan)
         except Exception as e:  # noqa: BLE001
+            observability.add_invariants(
+                record,
+                [
+                    InvariantResult(
+                        invariant_id="expression.non_empty_output",
+                        description="expression output must be non-empty",
+                        passed=False,
+                        failure_reason=str(e),
+                    )
+                ],
+            )
             observability.add_stage_event(
                 record,
                 StageAuditEvent(
@@ -229,7 +263,13 @@ def handle_request(payload: Dict[str, Any]) -> Dict[str, Any]:
         )
 
         # Invariants: non-empty expression output and record expression invariants.
-        invariants.assert_expression_non_empty(reply)
+        try:
+            invariants.assert_expression_non_empty(reply)
+        except Exception as e:  # noqa: BLE001
+            observability.add_invariants(record, audit.check_expression_invariants(reply))
+            observability.set_hard_failure(record, str(e))
+            raise
+
         observability.add_invariants(record, audit.check_expression_invariants(reply))
         trace = evidence_runtime.append_rule_evidence(
             trace,

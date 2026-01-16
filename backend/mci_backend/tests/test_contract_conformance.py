@@ -1,7 +1,7 @@
 import pytest
 
-from mci_backend.app import main, reasoning, expression, memory, observability
-from mci_backend.app.models import UserMessage, HypothesisSet, Hypothesis, ExpressionPlan, AssistantReply
+from backend.mci_backend.app import expression, main, memory, observability, reasoning
+from backend.mci_backend.app.models import AssistantReply, ExpressionPlan, Hypothesis, HypothesisSet, UserMessage
 
 
 def clear_records():
@@ -82,7 +82,7 @@ def test_expression_empty_plan_segments_fail(monkeypatch):
 
     def fake_run_reasoning(user, current_h):  # type: ignore[no-untyped-def]
         # Build a ReasoningOutput with an empty ExpressionPlan
-        from mci_backend.app.models import ReasoningOutput, HypothesisSet, ExpressionPlan
+        from backend.mci_backend.app.models import ExpressionPlan, HypothesisSet, ReasoningOutput
 
         return ReasoningOutput(
             internal_trace="ok",

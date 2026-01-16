@@ -1,7 +1,7 @@
 import pytest
 
-from mci_backend.app import expression
-from mci_backend.app.models import ExpressionPlan, AssistantReply
+from backend.mci_backend.app import expression
+from backend.mci_backend.app.models import AssistantReply, ExpressionPlan
 
 
 def test_expression_cannot_access_reasoning_or_hypotheses():

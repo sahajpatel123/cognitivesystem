@@ -77,7 +77,8 @@ SEMANTIC_GUARD_PATTERNS = [
     r"\bI have (?:a )?memory\b",
     r"\bI am (?:an )?agent\b",
     r"\bI can change (?:the )?rules\b",
-    r"\bI (?:store|kept) your data\b",
+    r"\bI can change (?:the )?policies\b",
+    r"\bI (?:will )?(?:store|keep|kept) your data\b",
     r"\bI (?:updated|redefined) my constraints\b",
     r"\bautonomous\b",
 ]

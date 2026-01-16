@@ -17,11 +17,11 @@ from .config import settings
 from .db import check_db_connection
 from .schemas import ChatRequest, ChatResponse
 from .service import ConversationService
-from mci_backend.decision_assembly import assemble_decision_state
-from mci_backend.expression_assembly import assemble_output_plan
-from mci_backend.governed_response_runtime import render_governed_response
-from mci_backend.model_contract import ModelInvocationResult
-from mci_backend.orchestration_assembly import assemble_control_plan
+from backend.mci_backend.decision_assembly import assemble_decision_state
+from backend.mci_backend.expression_assembly import assemble_output_plan
+from backend.mci_backend.governed_response_runtime import render_governed_response
+from backend.mci_backend.model_contract import ModelInvocationResult
+from backend.mci_backend.orchestration_assembly import assemble_control_plan
 from .chat_contract import (
     ChatAction,
     ChatRequest as ContractChatRequest,
@@ -63,6 +63,9 @@ app = FastAPI(title="Cognitive Conversational Prototype")
 
 def _configured_origins() -> list[str]:
     if settings.cors_origins:
+        # If "*" present, permit all
+        if "*" in settings.cors_origins:
+            return ["*"]
         return settings.cors_origins
     return [
         "http://localhost:3000",
@@ -74,8 +77,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_configured_origins(),
     allow_credentials=True,
-    allow_methods=["POST", "GET", "OPTIONS"],
-    allow_headers=["authorization", "content-type"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 service = ConversationService()
