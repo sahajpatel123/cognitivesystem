@@ -64,15 +64,9 @@ app = FastAPI(title="Cognitive Conversational Prototype")
 def _configured_origins() -> list[str]:
     if settings.cors_origins:
         return settings.cors_origins
-    if settings.is_production():
-        # Fail-closed: no wildcard in production
-        return []
-    # Allow common dev hosts when not production
     return [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
     ]
 
 
