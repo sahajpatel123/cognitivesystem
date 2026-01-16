@@ -1,11 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { HTMLAttributes, PropsWithChildren } from "react";
+import type { HTMLMotionProps } from "framer-motion";
+import type { PropsWithChildren } from "react";
 
-interface SectionRevealProps extends HTMLAttributes<HTMLDivElement> {
+type SectionRevealProps = {
   delay?: number;
-}
+  className?: string;
+  id?: string;
+} & HTMLMotionProps<"div">;
 
 export function SectionReveal({ children, delay = 0, className, ...rest }: PropsWithChildren<SectionRevealProps>) {
   return (
