@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from backend.app.llm_client import LLMClient
+from app.llm_client import LLMClient
 from mci_backend.control_plan import ControlPlan
 from mci_backend.decision_state import DecisionState
 from mci_backend.model_candidate_validation import validate_candidate_output

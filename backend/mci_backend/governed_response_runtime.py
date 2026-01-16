@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Optional
 
-from backend.app.llm_client import LLMClient
+from app.llm_client import LLMClient
 from mci_backend.decision_assembly import assemble_decision_state
 from mci_backend.model_contract import ModelFailure, ModelFailureType, ModelInvocationResult
 from mci_backend.model_invocation_pipeline import invoke_model_for_output_plan

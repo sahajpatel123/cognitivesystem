@@ -9,9 +9,9 @@ from __future__ import annotations
 import json
 from typing import Any, Dict
 
-from backend.app.enforcement import EnforcementError, ViolationClass
-from backend.app.llm_client import LLMClient
-from backend.app.schemas import CognitiveStyle, ExpressionPlan, IntermediateAnswer, UserMessage
+from app.enforcement import EnforcementError, ViolationClass
+from app.llm_client import LLMClient
+from app.schemas import CognitiveStyle, ExpressionPlan, IntermediateAnswer, UserMessage
 
 from mci_backend.model_contract import (
     ModelContractError,
