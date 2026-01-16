@@ -12,17 +12,17 @@ export default function AuditArchivePage() {
   const metrics = [
     {
       label: "Audit records",
-      value: `${totalRuns} executions",
+      value: `${totalRuns} executions`,
       tooltip: "Immutable archive bounded by certified retention window.",
     },
     {
       label: "Failure count",
-      value: `${failedRuns} recorded failures",
+      value: `${failedRuns} recorded failures`,
       tooltip: "Failed runs remain visible; no suppression is permitted.",
     },
     {
       label: "Elevated risk",
-      value: `${elevatedRuns} elevated contexts",
+      value: `${elevatedRuns} elevated contexts`,
       tooltip: "Elevated or out-of-scope designations require operator acknowledgement.",
     },
     {
