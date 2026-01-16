@@ -8,7 +8,7 @@ It does not change cognition or behavior; it only invokes the pipeline.
 
 import sys
 
-from mci_backend.app import main
+from backend.mci_backend.app import main
 
 
 def run(session_id: str, text: str) -> str:

@@ -9,16 +9,16 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mci_backend.control_plan import ClosureState
-from mci_backend.model_contract import (
+from backend.mci_backend.control_plan import ClosureState
+from backend.mci_backend.model_contract import (
     ModelContractInvariantViolation,
     ModelInvocationClass,
     ModelOutputFormat,
     build_request_id,
 )
-from mci_backend.model_prompt_builder import ModelPromptBuilderError, build_model_invocation_request
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
-from mci_backend.output_plan import (
+from backend.mci_backend.model_prompt_builder import ModelPromptBuilderError, build_model_invocation_request
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.output_plan import (
     AssumptionSurfacingMode,
     ClosureRenderingMode,
     ClosureSpec,

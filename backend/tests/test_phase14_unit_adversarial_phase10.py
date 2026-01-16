@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ClarificationReason,
     ClosureState,
     ControlAction,
@@ -16,8 +16,8 @@ from mci_backend.control_plan import (
     UnknownDisclosureLevel,
     build_control_plan,
 )
-from mci_backend.orchestration_assembly import assemble_control_plan, OrchestrationAssemblyError
-from mci_backend.decision_state import (
+from backend.mci_backend.orchestration_assembly import assemble_control_plan, OrchestrationAssemblyError
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     ConsequenceHorizon,
     DecisionState,
@@ -30,22 +30,22 @@ from mci_backend.decision_state import (
     RiskDomain,
     UnknownSource,
 )
-import mci_backend.orchestration_clarification_trigger as clar
-import mci_backend.orchestration_closure as closure
-import mci_backend.orchestration_friction as friction
-import mci_backend.orchestration_rigor as rigor
-import mci_backend.orchestration_initiative as initiative
-import mci_backend.orchestration_question_compression as compression
-from mci_backend.orchestration_question_compression import QuestionSelection, select_single_question
-from mci_backend.orchestration_refusal import RefusalDecision, decide_refusal
-import mci_backend.orchestration_refusal as refusal_module
-from mci_backend.orchestration_rigor import select_rigor
-from mci_backend.expression_assembly import (
+import backend.mci_backend.orchestration_clarification_trigger as clar
+import backend.mci_backend.orchestration_closure as closure
+import backend.mci_backend.orchestration_friction as friction
+import backend.mci_backend.orchestration_rigor as rigor
+import backend.mci_backend.orchestration_initiative as initiative
+import backend.mci_backend.orchestration_question_compression as compression
+from backend.mci_backend.orchestration_question_compression import QuestionSelection, select_single_question
+from backend.mci_backend.orchestration_refusal import RefusalDecision, decide_refusal
+import backend.mci_backend.orchestration_refusal as refusal_module
+from backend.mci_backend.orchestration_rigor import select_rigor
+from backend.mci_backend.expression_assembly import (
     assemble_output_plan,
     OutputAssemblyInvariantViolation,
     OutputAssemblyError,
 )
-import mci_backend.orchestration_assembly as assembly
+import backend.mci_backend.orchestration_assembly as assembly
 
 
 def _base_kwargs():

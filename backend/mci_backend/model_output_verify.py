@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Optional, Tuple
 
-from mci_backend.control_plan import ControlPlan
-from mci_backend.decision_state import DecisionState
-from mci_backend.model_contract import ModelFailure, ModelFailureType, ModelInvocationResult
-from mci_backend.model_output_schema import (
+from backend.mci_backend.control_plan import ControlPlan
+from backend.mci_backend.decision_state import DecisionState
+from backend.mci_backend.model_contract import ModelFailure, ModelFailureType, ModelInvocationResult
+from backend.mci_backend.model_output_schema import (
     AnswerJSON,
     AskOneQuestionJSON,
     CloseJSON,
@@ -21,13 +21,13 @@ from mci_backend.model_output_schema import (
     validate_close_payload,
     validate_refusal_payload,
 )
-from mci_backend.model_verified_output import (
+from backend.mci_backend.model_verified_output import (
     VerifiedAnswer,
     VerifiedAsk,
     VerifiedClose,
     VerifiedRefusal,
 )
-from mci_backend.output_plan import OutputAction, OutputPlan, UnknownDisclosureMode
+from backend.mci_backend.output_plan import OutputAction, OutputPlan, UnknownDisclosureMode
 
 
 class ModelOutputVerifyError(Exception):

@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Tuple
 
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ClarificationReason,
     ClosureState,
     ControlAction,
@@ -18,7 +18,7 @@ from mci_backend.control_plan import (
     UnknownDisclosureLevel,
     build_control_plan,
 )
-from mci_backend.decision_state import (
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     ConsequenceHorizon,
     DecisionState,
@@ -31,7 +31,7 @@ from mci_backend.decision_state import (
     RiskDomain,
     UnknownSource,
 )
-from mci_backend.output_plan import (
+from backend.mci_backend.output_plan import (
     AssumptionSurfacingMode,
     ClosureRenderingMode,
     ConfidenceSignalingLevel as OutputConfidenceLevel,
@@ -46,7 +46,7 @@ from mci_backend.output_plan import (
     build_output_plan,
     ClosureSpec,
 )
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
 
 
 @dataclass

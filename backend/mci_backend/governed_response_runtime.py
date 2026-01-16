@@ -6,12 +6,12 @@ import uuid
 from dataclasses import dataclass
 from typing import Optional
 
-from app.llm_client import LLMClient
-from mci_backend.decision_assembly import assemble_decision_state
-from mci_backend.model_contract import ModelFailure, ModelFailureType, ModelInvocationResult
-from mci_backend.model_invocation_pipeline import invoke_model_for_output_plan
-from mci_backend.orchestration_assembly import assemble_control_plan
-from mci_backend.expression_assembly import assemble_output_plan
+from backend.app.llm_client import LLMClient
+from backend.mci_backend.decision_assembly import assemble_decision_state
+from backend.mci_backend.model_contract import ModelFailure, ModelFailureType, ModelInvocationResult
+from backend.mci_backend.model_invocation_pipeline import invoke_model_for_output_plan
+from backend.mci_backend.orchestration_assembly import assemble_control_plan
+from backend.mci_backend.expression_assembly import assemble_output_plan
 
 
 class GovernedOrchestratorError(Exception):

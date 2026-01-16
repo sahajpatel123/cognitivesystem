@@ -7,15 +7,15 @@ no templates, no models.
 
 from typing import Optional
 
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ClosureState,
     ControlAction,
     ControlPlan,
     FrictionPosture,
     RefusalCategory,
 )
-from mci_backend.decision_state import DecisionState
-from mci_backend.output_plan import (
+from backend.mci_backend.decision_state import DecisionState
+from backend.mci_backend.output_plan import (
     AssumptionSurfacingMode,
     ClosureRenderingMode,
     ConfidenceSignalingLevel,
@@ -32,14 +32,14 @@ from mci_backend.output_plan import (
     RefusalSpec,
     ClosureSpec,
 )
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
-from mci_backend.expression_assumption_surfacing import select_assumption_surfacing
-from mci_backend.expression_closure_rendering import select_closure_rendering_mode
-from mci_backend.expression_confidence_signaling import select_confidence_signaling
-from mci_backend.expression_posture import select_expression_posture
-from mci_backend.expression_refusal_explanation import select_refusal_explanation_mode
-from mci_backend.expression_rigor_disclosure import select_rigor_disclosure
-from mci_backend.expression_unknown_disclosure import select_unknown_disclosure
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.expression_assumption_surfacing import select_assumption_surfacing
+from backend.mci_backend.expression_closure_rendering import select_closure_rendering_mode
+from backend.mci_backend.expression_confidence_signaling import select_confidence_signaling
+from backend.mci_backend.expression_posture import select_expression_posture
+from backend.mci_backend.expression_refusal_explanation import select_refusal_explanation_mode
+from backend.mci_backend.expression_rigor_disclosure import select_rigor_disclosure
+from backend.mci_backend.expression_unknown_disclosure import select_unknown_disclosure
 
 
 class OutputAssemblyError(Exception):

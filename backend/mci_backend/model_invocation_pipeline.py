@@ -4,22 +4,22 @@ from __future__ import annotations
 
 from typing import Optional
 
-from app.llm_client import LLMClient
-from mci_backend.control_plan import ControlPlan
-from mci_backend.decision_state import DecisionState
-from mci_backend.model_candidate_validation import validate_candidate_output
-from mci_backend.model_contract import (
+from backend.app.llm_client import LLMClient
+from backend.mci_backend.control_plan import ControlPlan
+from backend.mci_backend.decision_state import DecisionState
+from backend.mci_backend.model_candidate_validation import validate_candidate_output
+from backend.mci_backend.model_contract import (
     ModelFailure,
     ModelFailureType,
     ModelInvocationRequest,
     ModelInvocationResult,
     build_request_id,
 )
-from mci_backend.model_prompt_builder import ModelPromptBuilderError, build_model_invocation_request
-from mci_backend.model_runtime import invoke_model
-from mci_backend.model_output_verify import verify_and_sanitize_model_output
-from mci_backend.fallback_rendering import FallbackRenderingError, render_fallback_content
-from mci_backend.output_plan import OutputAction, OutputPlan, validate_output_plan
+from backend.mci_backend.model_prompt_builder import ModelPromptBuilderError, build_model_invocation_request
+from backend.mci_backend.model_runtime import invoke_model
+from backend.mci_backend.model_output_verify import verify_and_sanitize_model_output
+from backend.mci_backend.fallback_rendering import FallbackRenderingError, render_fallback_content
+from backend.mci_backend.output_plan import OutputAction, OutputPlan, validate_output_plan
 
 
 def _failure_result(

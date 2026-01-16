@@ -6,8 +6,8 @@ No orchestration, no models, no heuristics, no probabilities.
 
 from typing import Iterable
 
-from mci_backend.control_plan import RigorLevel
-from mci_backend.decision_state import (
+from backend.mci_backend.control_plan import RigorLevel
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     ConsequenceHorizon,
     DecisionState,

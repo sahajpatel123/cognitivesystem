@@ -7,7 +7,7 @@ No text generation, no models, no side effects.
 from enum import Enum
 from typing import Iterable
 
-from mci_backend.decision_state import (
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     ConsequenceHorizon,
     DecisionState,
@@ -17,14 +17,14 @@ from mci_backend.decision_state import (
     RiskAssessment,
     RiskDomain,
 )
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ClarificationReason,
     ClosureState,
     ControlAction,
     ControlPlan,
     FrictionPosture,
 )
-from mci_backend.output_plan import ExpressionPosture
+from backend.mci_backend.output_plan import ExpressionPosture
 
 
 class ExpressionPostureSelectionError(Exception):

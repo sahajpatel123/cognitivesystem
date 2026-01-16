@@ -6,8 +6,8 @@ FrictionPosture. No models, heuristics, or probabilities. No orchestration.
 
 from typing import Iterable, Optional
 
-from mci_backend.control_plan import FrictionPosture, RigorLevel
-from mci_backend.decision_state import (
+from backend.mci_backend.control_plan import FrictionPosture, RigorLevel
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     ConsequenceHorizon,
     DecisionState,

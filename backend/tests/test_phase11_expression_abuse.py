@@ -8,7 +8,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ClarificationReason,
     ClosureState,
     ControlAction,
@@ -22,7 +22,7 @@ from mci_backend.control_plan import (
     UnknownDisclosureLevel,
     build_control_plan,
 )
-from mci_backend.decision_state import (
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     ConsequenceHorizon,
     DecisionState,
@@ -36,15 +36,15 @@ from mci_backend.decision_state import (
     UnknownSource,
     PHASE_9_SCHEMA_VERSION,
 )
-from mci_backend.output_plan import (
+from backend.mci_backend.output_plan import (
     ExpressionPosture,
     OutputAction,
     UnknownDisclosureMode,
     ConfidenceSignalingLevel as OutputConfidenceSignalingLevel,
     ClosureRenderingMode,
 )
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
-from mci_backend.expression_assembly import (
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.expression_assembly import (
     OutputAssemblyError,
     OutputAssemblyInvariantViolation,
     assemble_output_plan,
@@ -239,7 +239,7 @@ def test_fail_closed_missing_closure_rendering(monkeypatch):
         closure_state=ClosureState.CLOSING,
         question_budget=0,
     )
-    import mci_backend.expression_assembly as assembly_mod
+    import backend.mci_backend.expression_assembly as assembly_mod
 
     def _bad_selector(*args, **kwargs):
         return None

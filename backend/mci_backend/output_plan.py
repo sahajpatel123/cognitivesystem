@@ -9,12 +9,12 @@ from enum import Enum
 from typing import Optional
 import uuid
 
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ClosureState,
     QuestionClass,
     RefusalCategory,
 )
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
 
 
 SCHEMA_VERSION = "11.0.0"

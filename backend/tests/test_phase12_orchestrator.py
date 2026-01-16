@@ -8,8 +8,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mci_backend.governed_response_runtime import render_governed_response
-from mci_backend.model_contract import (
+from backend.mci_backend.governed_response_runtime import render_governed_response
+from backend.mci_backend.model_contract import (
     ModelInvocationResult,
     ModelFailure,
     ModelFailureType,
@@ -17,7 +17,7 @@ from mci_backend.model_contract import (
     ModelOutputFormat,
     build_request_id,
 )
-from mci_backend.decision_state import (
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     DecisionState,
     OutcomeClass,
@@ -31,7 +31,7 @@ from mci_backend.decision_state import (
     RiskDomain,
     UnknownSource,
 )
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ControlPlan,
     ClosureState,
     ControlAction,
@@ -44,7 +44,7 @@ from mci_backend.control_plan import (
     InitiativeBudget,
     build_control_plan,
 )
-from mci_backend.output_plan import (
+from backend.mci_backend.output_plan import (
     OutputPlan,
     OutputAction,
     ExpressionPosture,
@@ -62,7 +62,7 @@ from mci_backend.output_plan import (
     QuestionClass,
     build_output_plan,
 )
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
 
 # Provide OutcomeClass.UNKNOWN alias if missing for tests only
 if not hasattr(OutcomeClass, "UNKNOWN"):

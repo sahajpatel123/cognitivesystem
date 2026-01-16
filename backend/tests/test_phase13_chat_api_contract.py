@@ -6,9 +6,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.chat_contract import MAX_PAYLOAD_BYTES
-import mci_backend.model_contract as mc
+from backend.app.main import app
+from backend.app.chat_contract import MAX_PAYLOAD_BYTES
+import backend.mci_backend.model_contract as mc
 
 
 client = TestClient(app)

@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from mci_backend.control_plan import ControlPlan
-from mci_backend.decision_state import DecisionState
-from mci_backend.output_plan import (
+from backend.mci_backend.control_plan import ControlPlan
+from backend.mci_backend.decision_state import DecisionState
+from backend.mci_backend.output_plan import (
     AssumptionSurfacingMode,
     ClosureRenderingMode,
     ExpressionPosture,

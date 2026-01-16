@@ -6,7 +6,7 @@ ControlPlan or fails closed with a typed error.
 
 from dataclasses import dataclass
 
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ClarificationReason,
     ClosureState,
     ConfidenceSignalingLevel,
@@ -22,14 +22,14 @@ from mci_backend.control_plan import (
     PhaseMarker,
     SCHEMA_VERSION,
 )
-from mci_backend.decision_state import DecisionState
-from mci_backend.orchestration_clarification_trigger import ClarificationDecision, decide_clarification
-from mci_backend.orchestration_closure import ClosureDecision, detect_closure
-from mci_backend.orchestration_friction import select_friction
-from mci_backend.orchestration_initiative import InitiativeDecision, select_initiative
-from mci_backend.orchestration_question_compression import QuestionSelection, select_single_question
-from mci_backend.orchestration_refusal import RefusalDecision, decide_refusal
-from mci_backend.orchestration_rigor import select_rigor
+from backend.mci_backend.decision_state import DecisionState
+from backend.mci_backend.orchestration_clarification_trigger import ClarificationDecision, decide_clarification
+from backend.mci_backend.orchestration_closure import ClosureDecision, detect_closure
+from backend.mci_backend.orchestration_friction import select_friction
+from backend.mci_backend.orchestration_initiative import InitiativeDecision, select_initiative
+from backend.mci_backend.orchestration_question_compression import QuestionSelection, select_single_question
+from backend.mci_backend.orchestration_refusal import RefusalDecision, decide_refusal
+from backend.mci_backend.orchestration_rigor import select_rigor
 
 
 class OrchestrationAssemblyError(ValueError):

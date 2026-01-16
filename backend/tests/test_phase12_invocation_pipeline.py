@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.app.llm_client import LLMClient
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ControlPlan,
     ClosureState,
     ControlAction,
@@ -23,7 +23,7 @@ from mci_backend.control_plan import (
     InitiativeBudget,
     build_control_plan,
 )
-from mci_backend.model_contract import (
+from backend.mci_backend.model_contract import (
     ModelFailureType,
     ModelInvocationClass,
     ModelInvocationRequest,
@@ -31,10 +31,10 @@ from mci_backend.model_contract import (
     ModelOutputFormat,
     build_request_id,
 )
-from mci_backend.model_invocation_pipeline import invoke_model_for_output_plan
-from mci_backend.model_prompt_builder import build_model_invocation_request
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
-from mci_backend.output_plan import (
+from backend.mci_backend.model_invocation_pipeline import invoke_model_for_output_plan
+from backend.mci_backend.model_prompt_builder import build_model_invocation_request
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.output_plan import (
     AssumptionSurfacingMode,
     ClosureRenderingMode,
     ClosureSpec,
@@ -51,7 +51,7 @@ from mci_backend.output_plan import (
     VerbosityCap,
     build_output_plan,
 )
-from mci_backend.decision_state import (
+from backend.mci_backend.decision_state import (
     DecisionState,
     PhaseMarker as DecisionPhaseMarker,
     ProximityState,
@@ -64,8 +64,8 @@ from mci_backend.decision_state import (
     OutcomeClass,
     PHASE_9_SCHEMA_VERSION,
 )
-from mci_backend.model_candidate_validation import validate_candidate_output
-from mci_backend.model_runtime import invoke_model
+from backend.mci_backend.model_candidate_validation import validate_candidate_output
+from backend.mci_backend.model_runtime import invoke_model
 
 # Phase 9 OutcomeClass lacks UNKNOWN alias; provide local alias for tests only.
 if not hasattr(OutcomeClass, "UNKNOWN"):

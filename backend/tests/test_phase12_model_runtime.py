@@ -10,8 +10,8 @@ if str(ROOT) not in sys.path:
 
 from backend.app.enforcement import EnforcementError, ViolationClass, build_failure
 from backend.app.llm_client import LLMClient
-from mci_backend.model_contract import ModelFailureType, ModelInvocationClass, ModelInvocationRequest, ModelOutputFormat
-from mci_backend.model_runtime import invoke_model
+from backend.mci_backend.model_contract import ModelFailureType, ModelInvocationClass, ModelInvocationRequest, ModelOutputFormat
+from backend.mci_backend.model_runtime import invoke_model
 
 
 def _base_request(**overrides):

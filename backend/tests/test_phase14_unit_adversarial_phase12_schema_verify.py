@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mci_backend.model_output_schema import (
+from backend.mci_backend.model_output_schema import (
     ModelOutputParseError,
     ModelOutputSchemaViolation,
     parse_model_json,
@@ -11,9 +11,9 @@ from mci_backend.model_output_schema import (
     validate_close_payload,
     validate_refusal_payload,
 )
-from mci_backend.model_output_verify import verify_and_sanitize_model_output
-from mci_backend.model_contract import ModelInvocationResult, ModelFailureType
-from mci_backend.output_plan import OutputAction
+from backend.mci_backend.model_output_verify import verify_and_sanitize_model_output
+from backend.mci_backend.model_contract import ModelInvocationResult, ModelFailureType
+from backend.mci_backend.output_plan import OutputAction
 
 from backend.tests._phase14_attack_cases import make_decision_state, make_control_plan, make_output_plan
 

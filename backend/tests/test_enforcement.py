@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from app import enforcement
-from app.enforcement import (
+from backend.app.enforcement import (
     ExpressionAdapterInput,
     ReasoningAdapterInput,
     ViolationClass,
@@ -15,8 +15,8 @@ from app.enforcement import (
     parse_reasoning_output,
     validate_expression_output,
 )
-from app.llm_client import LLMClient
-from app.schemas import (
+from backend.app.llm_client import LLMClient
+from backend.app.schemas import (
     CognitiveStyle,
     ExpressionPlan,
     IntermediateAnswer,

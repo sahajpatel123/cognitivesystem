@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-import mci_backend.governed_response_runtime as grr
+import backend.mci_backend.governed_response_runtime as grr
 from backend.tests._phase14_fake_llm import Phase14FakeLLM, Phase14TimeoutLLM, Phase14ErrorLLM
 from backend.tests._phase14_attack_cases import make_decision_state, make_control_plan, make_output_plan
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ControlAction,
     ClarificationReason,
     RefusalCategory,
@@ -16,8 +16,8 @@ from mci_backend.control_plan import (
     ConfidenceSignalingLevel,
     UnknownDisclosureLevel,
 )
-from mci_backend.output_plan import OutputAction
-from mci_backend.model_contract import ModelFailureType
+from backend.mci_backend.output_plan import OutputAction
+from backend.mci_backend.model_contract import ModelFailureType
 
 
 @pytest.fixture(autouse=True)

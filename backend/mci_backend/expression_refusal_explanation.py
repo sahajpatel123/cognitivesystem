@@ -7,7 +7,7 @@ no side effects.
 
 from typing import Iterable
 
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ClosureState,
     ControlAction,
     ControlPlan,
@@ -15,7 +15,7 @@ from mci_backend.control_plan import (
     RefusalCategory,
     RigorLevel,
 )
-from mci_backend.decision_state import (
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     ConsequenceHorizon,
     DecisionState,
@@ -25,7 +25,7 @@ from mci_backend.decision_state import (
     RiskAssessment,
     RiskDomain,
 )
-from mci_backend.output_plan import (
+from backend.mci_backend.output_plan import (
     AssumptionSurfacingMode,
     ConfidenceSignalingLevel,
     ExpressionPosture,

@@ -5,7 +5,7 @@ from typing import Any, Dict, Tuple
 
 import pytest
 
-import mci_backend.governed_response_runtime as grr
+import backend.mci_backend.governed_response_runtime as grr
 from backend.tests._phase14_determinism_signatures import (
     signature_control_plan,
     signature_decision_state,
@@ -13,15 +13,15 @@ from backend.tests._phase14_determinism_signatures import (
     signature_output_plan,
 )
 from backend.tests._phase14_fake_llm import Phase14FakeLLM
-from mci_backend.decision_state import OutcomeClass
-from mci_backend.expression_assembly import assemble_output_plan
-from mci_backend.model_contract import ModelInvocationResult, build_request_id
-from mci_backend.model_invocation_pipeline import invoke_model_for_output_plan
-from mci_backend.model_prompt_builder import build_model_invocation_request
-from mci_backend.model_candidate_validation import validate_candidate_output
-from mci_backend.orchestration_assembly import assemble_control_plan
-from mci_backend.decision_assembly import assemble_decision_state
-from mci_backend.output_plan import OutputAction
+from backend.mci_backend.decision_state import OutcomeClass
+from backend.mci_backend.expression_assembly import assemble_output_plan
+from backend.mci_backend.model_contract import ModelInvocationResult, build_request_id
+from backend.mci_backend.model_invocation_pipeline import invoke_model_for_output_plan
+from backend.mci_backend.model_prompt_builder import build_model_invocation_request
+from backend.mci_backend.model_candidate_validation import validate_candidate_output
+from backend.mci_backend.orchestration_assembly import assemble_control_plan
+from backend.mci_backend.decision_assembly import assemble_decision_state
+from backend.mci_backend.output_plan import OutputAction
 
 
 # Ensure compatibility for locked Phase 9 enum alias

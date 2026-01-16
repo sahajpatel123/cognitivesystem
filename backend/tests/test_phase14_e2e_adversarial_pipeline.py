@@ -5,9 +5,9 @@ import re
 
 import pytest
 
-import mci_backend.governed_response_runtime as grr
-from mci_backend.governed_response_runtime import render_governed_response
-from mci_backend.control_plan import (
+import backend.mci_backend.governed_response_runtime as grr
+from backend.mci_backend.governed_response_runtime import render_governed_response
+from backend.mci_backend.control_plan import (
     ClarificationReason,
     ClosureState,
     ControlAction,
@@ -20,7 +20,7 @@ from mci_backend.control_plan import (
     UnknownDisclosureLevel,
     build_control_plan,
 )
-from mci_backend.decision_state import (
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     ConsequenceHorizon,
     DecisionState,
@@ -33,8 +33,8 @@ from mci_backend.decision_state import (
     RiskDomain,
     UnknownSource,
 )
-from mci_backend.model_contract import ModelInvocationResult, ModelFailureType
-from mci_backend.output_plan import (
+from backend.mci_backend.model_contract import ModelInvocationResult, ModelFailureType
+from backend.mci_backend.output_plan import (
     AssumptionSurfacingMode,
     ClosureRenderingMode,
     ConfidenceSignalingLevel as OutputConfidenceLevel,
@@ -49,7 +49,7 @@ from mci_backend.output_plan import (
     VerbosityCap,
     build_output_plan,
 )
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
 
 from backend.tests._phase14_fake_llm import Phase14ErrorLLM, Phase14FakeLLM, Phase14TimeoutLLM
 

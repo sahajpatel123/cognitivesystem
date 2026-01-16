@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List
 
-from mci_backend.model_contract import (
+from backend.mci_backend.model_contract import (
     ModelContractError,
     ModelContractInvariantViolation,
     ModelInvocationClass,
@@ -18,7 +18,7 @@ from mci_backend.model_contract import (
     SCHEMA_VERSION,
     validate_model_request,
 )
-from mci_backend.output_plan import (
+from backend.mci_backend.output_plan import (
     OutputAction,
     OutputPlan,
     OutputPlanInvariantViolation,

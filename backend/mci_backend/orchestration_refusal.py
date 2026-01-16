@@ -7,13 +7,13 @@ No text generation, no models, no orchestration assembly.
 from dataclasses import dataclass
 from typing import Iterable
 
-from mci_backend.control_plan import (
+from backend.mci_backend.control_plan import (
     ClosureState,
     FrictionPosture,
     RefusalCategory,
     RigorLevel,
 )
-from mci_backend.decision_state import (
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     DecisionState,
     ProximityState,

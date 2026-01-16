@@ -8,8 +8,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mci_backend.control_plan import ClosureState, QuestionClass, RefusalCategory
-from mci_backend.model_output_schema import (
+from backend.mci_backend.control_plan import ClosureState, QuestionClass, RefusalCategory
+from backend.mci_backend.model_output_schema import (
     AnswerJSON,
     AskOneQuestionJSON,
     CloseJSON,
@@ -22,7 +22,7 @@ from mci_backend.model_output_schema import (
     validate_close_payload,
     validate_refusal_payload,
 )
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
 
 
 def test_parse_model_json_accepts_object():

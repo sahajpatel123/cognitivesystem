@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mci_backend.decision_state import (
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     ConsequenceHorizon,
     DecisionState,

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from mci_backend.control_plan import ClosureState, QuestionClass, RefusalCategory
-from mci_backend.output_plan import (
+from backend.mci_backend.control_plan import ClosureState, QuestionClass, RefusalCategory
+from backend.mci_backend.output_plan import (
     ClosureSpec,
     ClosureRenderingMode,
     ConfidenceSignalingLevel,

@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from mci_backend.control_plan import ClosureState, QuestionClass, RefusalCategory
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.control_plan import ClosureState, QuestionClass, RefusalCategory
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
 
 
 class ModelOutputSchemaError(Exception):

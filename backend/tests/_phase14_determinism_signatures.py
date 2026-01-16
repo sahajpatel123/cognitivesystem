@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from mci_backend.control_plan import ControlPlan
-from mci_backend.decision_state import DecisionState, RiskAssessment
-from mci_backend.model_contract import ModelInvocationResult
-from mci_backend.output_plan import OutputPlan
+from backend.mci_backend.control_plan import ControlPlan
+from backend.mci_backend.decision_state import DecisionState, RiskAssessment
+from backend.mci_backend.model_contract import ModelInvocationResult
+from backend.mci_backend.output_plan import OutputPlan
 
 
 def _enum_value(value: Any) -> Optional[str]:

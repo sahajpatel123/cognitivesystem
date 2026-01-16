@@ -8,8 +8,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mci_backend.control_plan import ClosureState
-from mci_backend.decision_state import (
+from backend.mci_backend.control_plan import ClosureState
+from backend.mci_backend.decision_state import (
     ConfidenceLevel,
     DecisionState,
     OutcomeClass,
@@ -22,7 +22,7 @@ from mci_backend.decision_state import (
     RiskDomain,
     PHASE_9_SCHEMA_VERSION,
 )
-from mci_backend.model_contract import (
+from backend.mci_backend.model_contract import (
     ModelFailureType,
     ModelInvocationClass,
     ModelInvocationRequest,
@@ -30,10 +30,10 @@ from mci_backend.model_contract import (
     ModelOutputFormat,
     build_request_id,
 )
-from mci_backend.model_output_verify import verify_and_sanitize_model_output
-from mci_backend.model_output_schema import CloseJSON
-from mci_backend.orchestration_question_compression import QuestionPriorityReason
-from mci_backend.output_plan import (
+from backend.mci_backend.model_output_verify import verify_and_sanitize_model_output
+from backend.mci_backend.model_output_schema import CloseJSON
+from backend.mci_backend.orchestration_question_compression import QuestionPriorityReason
+from backend.mci_backend.output_plan import (
     AssumptionSurfacingMode,
     ClosureRenderingMode,
     ClosureSpec,
@@ -51,7 +51,7 @@ from mci_backend.output_plan import (
     VerbosityCap,
     build_output_plan,
 )
-from mci_backend.model_prompt_builder import build_model_invocation_request
+from backend.mci_backend.model_prompt_builder import build_model_invocation_request
 
 # Provide OutcomeClass.UNKNOWN alias if missing for tests only
 if not hasattr(OutcomeClass, "UNKNOWN"):

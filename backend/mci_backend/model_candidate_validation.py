@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from mci_backend.model_contract import (
+from backend.mci_backend.model_contract import (
     ModelFailure,
     ModelFailureType,
     ModelInvocationRequest,
     ModelInvocationResult,
     ModelOutputFormat,
 )
-from mci_backend.output_plan import (
+from backend.mci_backend.output_plan import (
     ConfidenceSignalingLevel,
     OutputAction,
     OutputPlan,
