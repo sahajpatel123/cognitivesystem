@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import time
 import uuid
 from logging.config import dictConfig
 from typing import Any, Dict
 
-from fastapi import FastAPI, HTTPException, Path, Request
+from fastapi import FastAPI, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from .config import settings
+from .db import check_db_connection
 from .schemas import ChatRequest, ChatResponse
 from .service import ConversationService
 from mci_backend.decision_assembly import assemble_decision_state
@@ -52,15 +55,33 @@ LOGGING_CONFIG = {
 dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
+APP_VERSION = "2026.15.1"
+_start_time = time.monotonic()
+
 app = FastAPI(title="Cognitive Conversational Prototype")
 
-# Allow dev frontends on localhost
+
+def _configured_origins() -> list[str]:
+    if settings.cors_origins:
+        return settings.cors_origins
+    if settings.is_production():
+        # Fail-closed: no wildcard in production
+        return []
+    # Allow common dev hosts when not production
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_configured_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["authorization", "content-type"],
 )
 
 service = ConversationService()
@@ -74,14 +95,19 @@ async def post_message(
     if payload is None or not payload.message.strip():
         return ChatResponse(message="Say a bit more about what you’re trying to figure out.")
 
+    message_len = len(payload.message)
     logger.info(
         "[API] Incoming message",
-        extra={"session_id": session_id, "message": payload.message},
+        extra={
+            "session_id": session_id,
+            "event": "incoming_message",
+            "message_len": message_len,
+        },
     )
     response = service.handle_message(session_id=session_id, text=payload.message)
     logger.info(
         "[API] Outgoing message",
-        extra={"session_id": session_id, "message": response.message},
+        extra={"session_id": session_id, "event": "outgoing_message"},
     )
     return response
 
@@ -110,6 +136,57 @@ def _failure_response(
         failure_reason=reason[:200],
     )
     return JSONResponse(status_code=status_code, content=json.loads(payload.json()))
+
+
+@app.get("/health")
+async def health() -> Dict[str, Any]:
+    return {
+        "status": "ok",
+        "version": APP_VERSION,
+        "uptime_seconds": int(time.monotonic() - _start_time),
+    }
+
+
+def _env_missing(required: list[str]) -> list[str]:
+    return [var for var in required if not os.getenv(var)]
+
+
+@app.get("/ready")
+async def ready() -> JSONResponse:
+    try:
+        current_env = os.getenv("ENV", settings.env)
+        required = settings.required_env_vars()
+        missing = _env_missing(required) if current_env.lower() == "production" else []
+
+        db_status = {"configured": bool(os.getenv("DATABASE_URL") or settings.database_url), "ok": True}
+        if db_status["configured"]:
+            db_ok, db_reason = check_db_connection()
+            db_status["ok"] = db_ok
+            if db_reason:
+                db_status["reason"] = db_reason
+
+        model_key_present = bool(os.getenv("MODEL_PROVIDER_API_KEY") or settings.model_provider_api_key)
+
+        if current_env.lower() == "production":
+            if missing:
+                return JSONResponse(
+                    status_code=503,
+                    content={"status": "not_ready", "missing_env": missing, "db": db_status, "model_key": model_key_present},
+                )
+            if not model_key_present:
+                return JSONResponse(
+                    status_code=503,
+                    content={"status": "not_ready", "missing_env": ["MODEL_PROVIDER_API_KEY"], "db": db_status},
+                )
+            if not db_status["ok"]:
+                return JSONResponse(status_code=503, content={"status": "not_ready", "db": db_status})
+
+        return JSONResponse(
+            status_code=200,
+            content={"status": "ok", "env": current_env, "db": db_status, "model_key": model_key_present},
+        )
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "not_ready", "reason": "sanitized"})
 
 
 @app.post("/api/chat", response_model=ContractChatResponse)
