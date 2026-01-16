@@ -29,14 +29,32 @@ const closedActions: Action[] = ["CLOSE", "REFUSE"];
 type UiState = "IDLE" | "SENDING" | "TERMINAL" | "FAILED";
 
 export default function ChatPage() {
+  const apiBase = useMemo(() => {
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+    try {
+      const url = new URL(base);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new FailClosedError("API base invalid protocol");
+      }
+      return base.replace(/\/$/, "");
+    } catch {
+      throw new FailClosedError("API base invalid");
+    }
+  }, []);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [lastUserText, setLastUserText] = useState<string | null>(null);
   const [uiState, setUiState] = useState<UiState>("IDLE");
+  const uiStateRef = useRef<UiState>("IDLE");
   const [session, setSession] = useState<SessionState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const pendingRequestId = useRef(0);
+
+  useEffect(() => {
+    uiStateRef.current = uiState;
+  }, [uiState]);
 
   useEffect(() => {
     const restored = loadSession();
@@ -129,7 +147,7 @@ export default function ChatPage() {
     const currentRequestId = pendingRequestId.current + 1;
     pendingRequestId.current = currentRequestId;
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch(`${apiBase}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
@@ -158,7 +176,10 @@ export default function ChatPage() {
       pushSystemMessage("Request failed. Please retry.", "FALLBACK");
       setUiState("FAILED");
     } finally {
-      if (pendingRequestId.current === currentRequestId && uiState === "SENDING") {
+      if (pendingRequestId.current !== currentRequestId) {
+        return;
+      }
+      if (uiStateRef.current === "SENDING") {
         // handlers set final state; no override
       }
     }
@@ -225,6 +246,11 @@ export default function ChatPage() {
         <span className="eyebrow">Governed chat</span>
         <h1>Text-in / text-out, tool-only.</h1>
         <p>All responses flow through the certified governance pipeline. No retries, no bypasses.</p>
+        {process.env.NEXT_PUBLIC_ENV !== "production" && (
+          <div className="env-banner" role="status">
+            DEV MODE — Using {process.env.NEXT_PUBLIC_API_BASE_URL ?? "unset"} as API base
+          </div>
+        )}
       </div>
 
       <div className="chat-shell">
@@ -268,7 +294,7 @@ export default function ChatPage() {
             placeholder={inputDisabled ? "Interaction closed" : "Type a governed prompt..."}
             disabled={inputDisabled}
           />
-          <button type="submit" disabled={sendDisabled || uiState === "SENDING"}>
+          <button type="submit" disabled={sendDisabled}>
             {uiState === "SENDING" ? "Sending..." : "Send"}
           </button>
         </form>
