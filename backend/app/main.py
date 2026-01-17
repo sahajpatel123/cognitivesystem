@@ -8,13 +8,15 @@ import uuid
 from logging.config import dictConfig
 from typing import Any, Dict
 
-from fastapi import FastAPI, Path, Request
+from fastapi import Depends, FastAPI, Path, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from .auth.identity import ANON_COOKIE_NAME, IdentityContext
 from .config import settings
 from .db import check_db_connection
+from .deps.identity import identity_dependency
 from .schemas import ChatRequest, ChatResponse
 from .service import ConversationService
 from backend.mci_backend.decision_assembly import assemble_decision_state
@@ -154,6 +156,23 @@ async def db_health() -> Dict[str, str] | JSONResponse:
         return {"status": "ok", "db": "ok"}
     detail = reason or "unknown"
     return JSONResponse(status_code=503, content={"status": "error", "db": "down", "detail": detail})
+
+
+@app.get("/auth/whoami")
+async def whoami(identity: IdentityContext = Depends(identity_dependency)) -> Dict[str, Any]:
+    return {
+        "authenticated": identity.is_authenticated,
+        "subject_type": identity.subject_type,
+        "subject_id": identity.subject_id,
+        "user_id": identity.user_id,
+        "anon_id": identity.anon_id,
+    }
+
+
+@app.post("/auth/logout")
+async def logout(response: Response) -> Dict[str, str]:
+    response.delete_cookie(key=ANON_COOKIE_NAME, path="/")
+    return {"status": "ok"}
 
 
 def _env_missing(required: list[str]) -> list[str]:
