@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "PWD: $(pwd)"
 echo "Listing /app:"
@@ -12,7 +12,7 @@ echo "Find backend folder:"
 find /app -maxdepth 4 -type d -name "backend" || true
 
 echo "Python sys.path:"
-python -c "import sys; print('\n'.join(sys.path))"
+python3 -c "import sys; print('\n'.join(sys.path))"
 
 echo "Starting uvicorn..."
-PYTHONPATH=/app uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+PYTHONPATH=/app python3 -m uvicorn mci_backend.main:app --host 0.0.0.0 --port ${PORT:-8000}
