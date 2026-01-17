@@ -73,9 +73,12 @@ def _configured_origins() -> list[str]:
     ]
 
 
+_ALLOWED_ORIGINS = _configured_origins()
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_configured_origins(),
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
