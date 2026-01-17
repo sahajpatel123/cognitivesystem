@@ -147,6 +147,15 @@ async def health() -> Dict[str, Any]:
     }
 
 
+@app.get("/db/health", response_model=None)
+async def db_health() -> Dict[str, str] | JSONResponse:
+    ok, reason = check_db_connection()
+    if ok:
+        return {"status": "ok", "db": "ok"}
+    detail = reason or "unknown"
+    return JSONResponse(status_code=503, content={"status": "error", "db": "down", "detail": detail})
+
+
 def _env_missing(required: list[str]) -> list[str]:
     return [var for var in required if not os.getenv(var)]
 

@@ -74,6 +74,13 @@ Introduce a bounded persistence layer for production-hardening without altering 
 - `cleanup_expired_records()` deletes TTL-bounded rows (best-effort).
 - Until scheduling exists, ops can call this function manually (e.g., via a management task).
 
+## Step 2.5 — Connectivity Verification
+- Endpoint: `GET /db/health`
+  - Success: `{"status":"ok","db":"ok"}`
+  - Failure (sanitized): `{"status":"error","db":"down","detail":"<reason>"}` (no secrets or URLs leaked)
+- Behavior: checks `DATABASE_URL`, attempts `SELECT 1` with a short timeout, uses defensive error handling.
+- Purpose: verify Supabase Postgres connectivity from Railway without storing or exposing user data.
+
 ## Future Steps
 - Step 3 (Auth): may use `user_id` in sessions/quotas/rate_limits; schema already supports it.
 - Step 4 (Quotas): will increment `quotas` and `rate_limits`; no schema change expected.
