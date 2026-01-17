@@ -1,18 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-echo "PWD: $(pwd)"
-echo "Listing /app:"
-ls -la /app || true
+echo "python3 location:"
+command -v python3 || (echo "python3 not found in PATH" && exit 1)
 
-echo "Listing current directory:"
-ls -la
-
-echo "Find backend folder:"
-find /app -maxdepth 4 -type d -name "backend" || true
-
-echo "Python sys.path:"
-python3 -c "import sys; print('\n'.join(sys.path))"
-
-echo "Starting uvicorn..."
-PYTHONPATH=/app python3 -m uvicorn mci_backend.main:app --host 0.0.0.0 --port ${PORT:-8000}
+export PYTHONPATH=/app
+exec python3 -m uvicorn mci_backend.main:app --host 0.0.0.0 --port "${PORT:-8000}"
