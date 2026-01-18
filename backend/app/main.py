@@ -12,11 +12,12 @@ from fastapi import Depends, FastAPI, Path, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-
 from .auth.identity import ANON_COOKIE_NAME, IdentityContext
 from .config import settings
 from .db import check_db_connection
 from .deps.identity import identity_dependency
+from .deps.plan_guard import post_accounting, precheck_plan_and_quotas
+from .plans.tokens import clamp_text_to_token_limit, estimate_tokens_from_text
 from .schemas import ChatRequest, ChatResponse
 from .service import ConversationService
 from backend.mci_backend.decision_assembly import assemble_decision_state
@@ -218,7 +219,7 @@ async def ready() -> JSONResponse:
 
 
 @app.post("/api/chat", response_model=ContractChatResponse)
-async def governed_chat(request: Request) -> ContractChatResponse | JSONResponse:
+async def governed_chat(request: Request, identity: IdentityContext = Depends(identity_dependency)) -> ContractChatResponse | JSONResponse:
     content_length = request.headers.get("content-length")
     if content_length:
         try:
@@ -282,6 +283,10 @@ async def governed_chat(request: Request) -> ContractChatResponse | JSONResponse
             action=ChatAction.REFUSE,
         )
 
+    plan, limits, guard_error, input_tokens, budget_estimate = precheck_plan_and_quotas(chat_request.user_text, identity)
+    if guard_error:
+        return guard_error
+
     try:
         trace_id = str(uuid.uuid4())
         decision_id = str(uuid.uuid4())
@@ -298,6 +303,7 @@ async def governed_chat(request: Request) -> ContractChatResponse | JSONResponse
         )
 
     rendered_text = _extract_rendered_text(result) or "Governed response unavailable."
+    rendered_text = clamp_text_to_token_limit(rendered_text, limits.max_output_tokens)
     if not result.ok and result.failure:
         failure_type = FailureType.GOVERNED_PIPELINE_ABORTED
         failure_reason = result.failure.reason_code[:200]
@@ -307,6 +313,8 @@ async def governed_chat(request: Request) -> ContractChatResponse | JSONResponse
             failure_type=failure_type,
             failure_reason=failure_reason,
         )
+        tokens_used = input_tokens + estimate_tokens_from_text(rendered_text)
+        post_accounting(identity, tokens_used)
         return response
 
     response = ContractChatResponse(
@@ -315,4 +323,6 @@ async def governed_chat(request: Request) -> ContractChatResponse | JSONResponse
         failure_type=None,
         failure_reason=None,
     )
+    tokens_used = input_tokens + estimate_tokens_from_text(rendered_text)
+    post_accounting(identity, tokens_used)
     return response
