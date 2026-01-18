@@ -6,6 +6,7 @@ import os
 import time
 import uuid
 from logging.config import dictConfig
+import datetime
 from typing import Any, Dict
 
 from fastapi import Depends, FastAPI, Path, Request, Response
@@ -23,6 +24,7 @@ from .service import ConversationService
 from .waf.guard import WAFError, waf_dependency
 from backend.mci_backend.governed_response_runtime import render_governed_response
 from backend.mci_backend.model_contract import ModelInvocationResult
+from backend.app.observability import get_request_id, structured_log, hash_subject, record_invocation
 from .chat_contract import (
     ChatAction,
     ChatRequest as ContractChatRequest,
@@ -140,11 +142,74 @@ def _failure_response(
 
 
 def _request_id(request: Request) -> str:
-    return (
-        request.headers.get("x-railway-request-id")
-        or request.headers.get("x-request-id")
-        or str(uuid.uuid4())
+    return get_request_id(request)
+
+
+def _waf_meta(request: Request) -> dict:
+    try:
+        meta = getattr(request.state, "waf_meta", None)
+        return meta if isinstance(meta, dict) else {}
+    except Exception:
+        return {}
+
+
+def _plan_meta(request: Request) -> dict:
+    try:
+        meta = getattr(request.state, "plan_meta", None)
+        return meta if isinstance(meta, dict) else {}
+    except Exception:
+        return {}
+
+
+def _log_chat_summary(
+    *,
+    request: Request,
+    request_id: str,
+    status_code: int,
+    latency_ms: float,
+    plan_value: str,
+    subject_type: str,
+    subject_id: str,
+    input_tokens: int | None,
+    output_tokens_est: int | None,
+    error_code: str | None,
+    waf_limiter: str | None,
+) -> None:
+    waf_info = _waf_meta(request)
+    plan_info = _plan_meta(request)
+    hashed = hash_subject(subject_type, subject_id)
+    event = {
+        "type": "api_chat",
+        "request_id": request_id,
+        "route": "/api/chat",
+        "method": "POST",
+        "status_code": status_code,
+        "latency_ms": int(latency_ms),
+        "plan": plan_value,
+        "subject_type": subject_type,
+        "hashed_subject": hashed,
+        "waf_decision": waf_info.get("decision"),
+        "waf_error": waf_info.get("error_code"),
+        "waf_limiter": waf_info.get("limiter_backend") or waf_limiter,
+        "plan_decision": plan_info.get("decision"),
+        "plan_error": plan_info.get("error_code"),
+        "token_estimate_in": input_tokens,
+        "token_estimate_out_cap": output_tokens_est,
+        "error_code": error_code,
+    }
+    invocation_written = record_invocation(
+        {
+            "ts": datetime.datetime.utcnow(),
+            "route": "/api/chat",
+            "status_code": status_code,
+            "latency_ms": int(latency_ms),
+            "error_code": error_code,
+            "hashed_subject": hashed,
+            "session_id": getattr(getattr(request.state, "identity", None), "anon_id", None),
+        }
     )
+    event["invocation_log_written"] = invocation_written
+    structured_log(event)
 
 
 @app.get("/health")
@@ -226,7 +291,12 @@ async def ready() -> JSONResponse:
 
 @app.post("/api/chat", response_model=ContractChatResponse)
 async def governed_chat(request: Request, identity: IdentityContext = Depends(waf_dependency)) -> ContractChatResponse | JSONResponse:
+    start_ts = time.monotonic()
     rid = _request_id(request)
+    try:
+        request.state.identity = identity
+    except Exception:
+        pass
     waf_limiter = "memory-fallback" if getattr(request.state, "waf_used_memory", False) else "db"
     logger.info(
         "[API] chat start",
@@ -245,6 +315,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
         try:
             payload = await request.json()
         except Exception:
+            latency_ms = (time.monotonic() - start_ts) * 1000
             logger.info(
                 "[API] chat reject",
                 extra={
@@ -261,9 +332,24 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 status_code=400,
                 content={"ok": False, "error_code": "json_invalid", "message": "Request body must be valid JSON."},
             )
+        finally:
+            _log_chat_summary(
+                request=request,
+                request_id=rid,
+                status_code=400,
+                latency_ms=latency_ms,
+                plan_value="unknown",
+                subject_type=identity.subject_type,
+                subject_id=identity.subject_id,
+                input_tokens=None,
+                output_tokens_est=None,
+                error_code="json_invalid",
+                waf_limiter=waf_limiter,
+            )
 
     user_text = payload.get("user_text") if isinstance(payload, dict) else None
     if not user_text or not isinstance(user_text, str):
+        latency_ms = (time.monotonic() - start_ts) * 1000
         logger.info(
             "[API] chat reject",
             extra={
@@ -276,6 +362,19 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 "waf_limiter": waf_limiter,
             },
         )
+        _log_chat_summary(
+            request=request,
+            request_id=rid,
+            status_code=400,
+            latency_ms=latency_ms,
+            plan_value="unknown",
+            subject_type=identity.subject_type,
+            subject_id=identity.subject_id,
+            input_tokens=None,
+            output_tokens_est=None,
+            error_code="user_text_missing",
+            waf_limiter=waf_limiter,
+        )
         return JSONResponse(
             status_code=400,
             content={"ok": False, "error_code": "user_text_missing", "message": "user_text is required"},
@@ -284,6 +383,20 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
     try:
         chat_request = ContractChatRequest(**{"user_text": user_text})
     except ValidationError:
+        latency_ms = (time.monotonic() - start_ts) * 1000
+        _log_chat_summary(
+            request=request,
+            request_id=rid,
+            status_code=400,
+            latency_ms=latency_ms,
+            plan_value="unknown",
+            subject_type=identity.subject_type,
+            subject_id=identity.subject_id,
+            input_tokens=None,
+            output_tokens_est=None,
+            error_code="request_schema_invalid",
+            waf_limiter=waf_limiter,
+        )
         return _failure_response(
             status_code=400,
             failure_type=FailureType.REQUEST_SCHEMA_INVALID,
@@ -292,6 +405,10 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
         )
 
     plan, limits, guard_error, input_tokens, budget_estimate = precheck_plan_and_quotas(chat_request.user_text, identity)
+    try:
+        request.state.plan_meta = {"decision": "allow", "error_code": None, "plan": plan.value}
+    except Exception:
+        pass
     if guard_error:
         if getattr(request.state, "waf_used_memory", False) and isinstance(guard_error, JSONResponse):
             guard_error.headers["X-WAF-Limiter"] = "memory-fallback"
@@ -320,6 +437,24 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                     "waf_limiter": waf_limiter,
                 },
             )
+            try:
+                request.state.plan_meta = {"decision": "blocked", "error_code": error_code, "plan": plan.value}
+            except Exception:
+                pass
+            latency_ms = (time.monotonic() - start_ts) * 1000
+            _log_chat_summary(
+                request=request,
+                request_id=rid,
+                status_code=guard_error.status_code,
+                latency_ms=latency_ms,
+                plan_value=plan.value,
+                subject_type=identity.subject_type,
+                subject_id=identity.subject_id,
+                input_tokens=input_tokens,
+                output_tokens_est=limits.max_output_tokens,
+                error_code=error_code,
+                waf_limiter=waf_limiter,
+            )
         return guard_error
 
     try:
@@ -338,6 +473,20 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 "waf_limiter": waf_limiter,
                 "exc_type": type(exc).__name__,
             },
+        )
+        latency_ms = (time.monotonic() - start_ts) * 1000
+        _log_chat_summary(
+            request=request,
+            request_id=rid,
+            status_code=500,
+            latency_ms=latency_ms,
+            plan_value=plan.value,
+            subject_type=identity.subject_type,
+            subject_id=identity.subject_id,
+            input_tokens=input_tokens,
+            output_tokens_est=limits.max_output_tokens,
+            error_code="internal_error",
+            waf_limiter=waf_limiter,
         )
         return _failure_response(
             status_code=500,
@@ -363,6 +512,20 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
         headers = {}
         if getattr(request.state, "waf_used_memory", False):
             headers["X-WAF-Limiter"] = "memory-fallback"
+        latency_ms = (time.monotonic() - start_ts) * 1000
+        _log_chat_summary(
+            request=request,
+            request_id=rid,
+            status_code=200,
+            latency_ms=latency_ms,
+            plan_value=plan.value,
+            subject_type=identity.subject_type,
+            subject_id=identity.subject_id,
+            input_tokens=input_tokens,
+            output_tokens_est=limits.max_output_tokens,
+            error_code=failure_reason,
+            waf_limiter=waf_limiter,
+        )
         logger.info(
             "[API] chat governed failure",
             extra={
@@ -398,6 +561,20 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
     headers = {}
     if getattr(request.state, "waf_used_memory", False):
         headers["X-WAF-Limiter"] = "memory-fallback"
+    latency_ms = (time.monotonic() - start_ts) * 1000
+    _log_chat_summary(
+        request=request,
+        request_id=rid,
+        status_code=200,
+        latency_ms=latency_ms,
+        plan_value=plan.value,
+        subject_type=identity.subject_type,
+        subject_id=identity.subject_id,
+        input_tokens=input_tokens,
+        output_tokens_est=limits.max_output_tokens,
+        error_code=None,
+        waf_limiter=waf_limiter,
+    )
     logger.info(
         "[API] chat success",
         extra={

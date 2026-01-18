@@ -15,6 +15,7 @@ from fastapi import Depends, Request
 
 from backend.app.auth.identity import IdentityContext
 from backend.app.deps.identity import identity_dependency
+from backend.app.observability.request_id import get_request_id
 
 try:
     from backend.app.db.database import get_db_connection
@@ -358,35 +359,72 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
     if request.url.path not in WAF_ENFORCE_ROUTES:
         return identity
 
+    try:
+        request.state.waf_meta = {"decision": "allow", "error_code": None, "limiter_backend": "db"}
+    except Exception:
+        pass
+
     content_type = request.headers.get("content-type", "")
     if "application/json" not in content_type.lower():
+        try:
+            request.state.waf_meta = {"decision": "blocked", "error_code": "content_type_invalid", "limiter_backend": "db"}
+        except Exception:
+            pass
         raise WAFError(415, "content_type_invalid", "Content-Type must be application/json")
 
     content_length = request.headers.get("content-length")
     if content_length:
         try:
             if int(content_length) > WAF_MAX_BODY_BYTES:
+                try:
+                    request.state.waf_meta = {"decision": "blocked", "error_code": "payload_too_large", "limiter_backend": "db"}
+                except Exception:
+                    pass
                 raise WAFError(413, "payload_too_large", "Payload exceeds maximum size.")
         except ValueError:
+            try:
+                request.state.waf_meta = {"decision": "blocked", "error_code": "invalid_content_length", "limiter_backend": "db"}
+            except Exception:
+                pass
             raise WAFError(400, "invalid_content_length", "Invalid Content-Length header.")
 
     body = await request.body()
     if len(body) > WAF_MAX_BODY_BYTES:
+        try:
+            request.state.waf_meta = {"decision": "blocked", "error_code": "payload_too_large", "limiter_backend": "db"}
+        except Exception:
+            pass
         raise WAFError(413, "payload_too_large", "Payload exceeds maximum size.")
 
     payload = None
     try:
         payload = json.loads(body or "{}")
     except json.JSONDecodeError:
+        try:
+            request.state.waf_meta = {"decision": "blocked", "error_code": "json_invalid", "limiter_backend": "db"}
+        except Exception:
+            pass
         raise WAFError(400, "json_invalid", "Invalid JSON payload")
 
     if not isinstance(payload, dict) or "user_text" not in payload:
+        try:
+            request.state.waf_meta = {"decision": "blocked", "error_code": "invalid_payload", "limiter_backend": "db"}
+        except Exception:
+            pass
         raise WAFError(400, "invalid_payload", "user_text is required.")
 
     user_text = payload.get("user_text")
     if not isinstance(user_text, str):
+        try:
+            request.state.waf_meta = {"decision": "blocked", "error_code": "invalid_payload", "limiter_backend": "db"}
+        except Exception:
+            pass
         raise WAFError(400, "invalid_payload", "user_text must be a string.")
     if len(user_text) > WAF_MAX_USER_TEXT_CHARS:
+        try:
+            request.state.waf_meta = {"decision": "blocked", "error_code": "user_text_too_long", "limiter_backend": "db"}
+        except Exception:
+            pass
         raise WAFError(413, "user_text_too_long", "user_text exceeds maximum length.")
 
     # Cache parsed payload for downstream use
@@ -412,7 +450,19 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
     )
     if ip_used_mem:
         request.state.waf_used_memory = True
+        try:
+            request.state.waf_meta = {
+                "decision": request.state.waf_meta.get("decision", "allow") if hasattr(request.state, "waf_meta") else "allow",
+                "error_code": None,
+                "limiter_backend": "memory-fallback",
+            }
+        except Exception:
+            pass
     if not ip_allowed:
+        try:
+            request.state.waf_meta = {"decision": "blocked", "error_code": "rate_limited", "limiter_backend": "memory-fallback" if ip_used_mem else "db"}
+        except Exception:
+            pass
         raise WAFError(429, "rate_limited", "Too many requests from IP.", retry_after_seconds=ip_retry, limit_scope="ip")
 
     # Rate limiting by subject (if present)
@@ -433,7 +483,19 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
         )
         if sub_used_mem:
             request.state.waf_used_memory = True
+            try:
+                request.state.waf_meta = {
+                    "decision": request.state.waf_meta.get("decision", "allow") if hasattr(request.state, "waf_meta") else "allow",
+                    "error_code": None,
+                    "limiter_backend": "memory-fallback",
+                }
+            except Exception:
+                pass
         if not sub_allowed:
+            try:
+                request.state.waf_meta = {"decision": "blocked", "error_code": "rate_limited", "limiter_backend": "memory-fallback" if sub_used_mem else "db"}
+            except Exception:
+                pass
             raise WAFError(
                 429,
                 "rate_limited",
