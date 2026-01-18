@@ -350,6 +350,17 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
         LimitWindow(WAF_IP_SUSTAIN_LIMIT, WAF_IP_SUSTAIN_WINDOW_SECONDS),
     )
     ip_allowed, ip_retry, ip_used_mem = _rate_check(ip_key, ip_windows, now_ts)
+    logger.info(
+        "[WAF] rate check",
+        extra={
+            "route": request.url.path,
+            "key_scope": ip_key.scope,
+            "key_value": ip_key.hashed().value,
+            "used_memory": ip_used_mem,
+            "status": "allowed" if ip_allowed else "blocked",
+            "retry_after": ip_retry,
+        },
+    )
     if ip_used_mem:
         request.state.waf_used_memory = True
     if not ip_allowed:
@@ -363,6 +374,17 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
             LimitWindow(WAF_SUBJECT_SUSTAIN_LIMIT, WAF_SUBJECT_SUSTAIN_WINDOW_SECONDS),
         )
         sub_allowed, sub_retry, sub_used_mem = _rate_check(subject_key, subject_windows, now_ts)
+        logger.info(
+            "[WAF] rate check",
+            extra={
+                "route": request.url.path,
+                "key_scope": subject_key.scope,
+                "key_value": subject_key.value,
+                "used_memory": sub_used_mem,
+                "status": "allowed" if sub_allowed else "blocked",
+                "retry_after": sub_retry,
+            },
+        )
         if sub_used_mem:
             request.state.waf_used_memory = True
         if not sub_allowed:

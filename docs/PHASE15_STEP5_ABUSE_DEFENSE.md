@@ -41,6 +41,7 @@
 - IPs hashed with `IDENTITY_HASH_SALT` before storage; subjects unchanged (user/anon IDs).
 - No raw prompts stored or logged.
 - Observability remains passive; no cognition logic touched.
+- Railway runs behind a proxy; uvicorn must be started with `--proxy-headers --forwarded-allow-ips "100.64.0.0/10"` so IP rate limiting sees the real client IP without trusting arbitrary headers.
 
 ## Error Examples
 - Invalid content type:
