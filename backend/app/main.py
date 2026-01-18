@@ -20,6 +20,7 @@ from .deps.plan_guard import post_accounting, precheck_plan_and_quotas
 from .plans.tokens import clamp_text_to_token_limit, estimate_tokens_from_text
 from .schemas import ChatRequest, ChatResponse
 from .service import ConversationService
+from .waf.guard import WAFError, waf_dependency
 from backend.mci_backend.decision_assembly import assemble_decision_state
 from backend.mci_backend.expression_assembly import assemble_output_plan
 from backend.mci_backend.governed_response_runtime import render_governed_response
@@ -219,7 +220,7 @@ async def ready() -> JSONResponse:
 
 
 @app.post("/api/chat", response_model=ContractChatResponse)
-async def governed_chat(request: Request, identity: IdentityContext = Depends(identity_dependency)) -> ContractChatResponse | JSONResponse:
+async def governed_chat(request: Request, identity: IdentityContext = Depends(waf_dependency)) -> ContractChatResponse | JSONResponse:
     content_length = request.headers.get("content-length")
     if content_length:
         try:
@@ -285,6 +286,8 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(id
 
     plan, limits, guard_error, input_tokens, budget_estimate = precheck_plan_and_quotas(chat_request.user_text, identity)
     if guard_error:
+        if getattr(request.state, "waf_used_memory", False) and isinstance(guard_error, JSONResponse):
+            guard_error.headers["X-WAF-Limiter"] = "memory-fallback"
         return guard_error
 
     try:
@@ -315,7 +318,11 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(id
         )
         tokens_used = input_tokens + estimate_tokens_from_text(rendered_text)
         post_accounting(identity, tokens_used)
-        return response
+        json_payload = json.loads(response.json())
+        headers = {}
+        if getattr(request.state, "waf_used_memory", False):
+            headers["X-WAF-Limiter"] = "memory-fallback"
+        return JSONResponse(status_code=200, content=json_payload, headers=headers)
 
     response = ContractChatResponse(
         action=ChatAction(output_plan.action.value),
@@ -325,4 +332,16 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(id
     )
     tokens_used = input_tokens + estimate_tokens_from_text(rendered_text)
     post_accounting(identity, tokens_used)
-    return response
+    json_payload = json.loads(response.json())
+    headers = {}
+    if getattr(request.state, "waf_used_memory", False):
+        headers["X-WAF-Limiter"] = "memory-fallback"
+    return JSONResponse(status_code=200, content=json_payload, headers=headers)
+
+
+@app.exception_handler(WAFError)
+async def handle_waf_error(request: Request, exc: WAFError) -> JSONResponse:  # noqa: D401
+    headers = exc.to_headers()
+    if getattr(request.state, "waf_used_memory", False):
+        headers["X-WAF-Limiter"] = "memory-fallback"
+    return JSONResponse(status_code=exc.status_code, content=exc.to_body(), headers=headers)
