@@ -323,10 +323,11 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
     if len(body) > WAF_MAX_BODY_BYTES:
         raise WAFError(413, "payload_too_large", "Payload exceeds maximum size.")
 
+    payload = None
     try:
         payload = json.loads(body or "{}")
     except json.JSONDecodeError:
-        raise WAFError(400, "invalid_json", "Request body must be valid JSON.")
+        raise WAFError(400, "json_invalid", "Invalid JSON payload")
 
     if not isinstance(payload, dict) or "user_text" not in payload:
         raise WAFError(400, "invalid_payload", "user_text is required.")
@@ -336,6 +337,9 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
         raise WAFError(400, "invalid_payload", "user_text must be a string.")
     if len(user_text) > WAF_MAX_USER_TEXT_CHARS:
         raise WAFError(413, "user_text_too_long", "user_text exceeds maximum length.")
+
+    # Cache parsed payload for downstream use
+    request.state.payload = payload
 
     now_ts = _now()
 

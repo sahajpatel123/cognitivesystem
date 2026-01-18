@@ -221,61 +221,43 @@ async def ready() -> JSONResponse:
 
 @app.post("/api/chat", response_model=ContractChatResponse)
 async def governed_chat(request: Request, identity: IdentityContext = Depends(waf_dependency)) -> ContractChatResponse | JSONResponse:
-    content_length = request.headers.get("content-length")
-    if content_length:
+    payload = getattr(request.state, "payload", None)
+    if payload is None:
         try:
-            if int(content_length) > MAX_PAYLOAD_BYTES:
-                return _failure_response(
-                    status_code=413,
-                    failure_type=FailureType.REQUEST_TOO_LARGE,
-                    reason="payload too large",
-                    action=ChatAction.REFUSE,
-                )
-        except ValueError:
-            return _failure_response(
+            payload = await request.json()
+        except Exception:
+            logger.info(
+                "[API] chat reject",
+                extra={
+                    "route": "/api/chat",
+                    "status_code": 400,
+                    "error_code": "json_invalid",
+                    "request_id": request.headers.get("x-request-id"),
+                },
+            )
+            return JSONResponse(
                 status_code=400,
-                failure_type=FailureType.REQUEST_SCHEMA_INVALID,
-                reason="invalid content-length",
-                action=ChatAction.REFUSE,
+                content={"ok": False, "error_code": "json_invalid", "message": "Request body must be valid JSON."},
             )
 
-    raw_body = await request.body()
-    if len(raw_body) > MAX_PAYLOAD_BYTES:
-        return _failure_response(
-            status_code=413,
-            failure_type=FailureType.REQUEST_TOO_LARGE,
-            reason="payload too large",
-            action=ChatAction.REFUSE,
+    user_text = payload.get("user_text") if isinstance(payload, dict) else None
+    if not user_text or not isinstance(user_text, str):
+        logger.info(
+            "[API] chat reject",
+            extra={
+                "route": "/api/chat",
+                "status_code": 400,
+                "error_code": "user_text_missing",
+                "request_id": request.headers.get("x-request-id"),
+            },
+        )
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error_code": "user_text_missing", "message": "user_text is required"},
         )
 
     try:
-        payload: Dict[str, Any] = json.loads(raw_body or "{}")
-    except json.JSONDecodeError:
-        return _failure_response(
-            status_code=400,
-            failure_type=FailureType.REQUEST_SCHEMA_INVALID,
-            reason="invalid json",
-            action=ChatAction.REFUSE,
-        )
-
-    if not isinstance(payload, dict):
-        return _failure_response(
-            status_code=400,
-            failure_type=FailureType.REQUEST_SCHEMA_INVALID,
-            reason="payload must be object",
-            action=ChatAction.REFUSE,
-        )
-
-    if "user_text" in payload and isinstance(payload["user_text"], str) and not payload["user_text"].strip():
-        return _failure_response(
-            status_code=400,
-            failure_type=FailureType.EMPTY_INPUT,
-            reason="user_text empty",
-            action=ChatAction.REFUSE,
-        )
-
-    try:
-        chat_request = ContractChatRequest(**payload)
+        chat_request = ContractChatRequest(**{"user_text": user_text})
     except ValidationError:
         return _failure_response(
             status_code=400,
@@ -288,6 +270,24 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
     if guard_error:
         if getattr(request.state, "waf_used_memory", False) and isinstance(guard_error, JSONResponse):
             guard_error.headers["X-WAF-Limiter"] = "memory-fallback"
+        if isinstance(guard_error, JSONResponse):
+            try:
+                body = guard_error.body
+                error_code = None
+                if body:
+                    parsed = json.loads(body)
+                    error_code = parsed.get("error_code")
+            except Exception:
+                error_code = None
+            logger.info(
+                "[API] chat reject",
+                extra={
+                    "route": "/api/chat",
+                    "status_code": guard_error.status_code,
+                    "error_code": error_code,
+                    "request_id": request.headers.get("x-request-id"),
+                },
+            )
         return guard_error
 
     try:
@@ -345,3 +345,12 @@ async def handle_waf_error(request: Request, exc: WAFError) -> JSONResponse:  # 
     if getattr(request.state, "waf_used_memory", False):
         headers["X-WAF-Limiter"] = "memory-fallback"
     return JSONResponse(status_code=exc.status_code, content=exc.to_body(), headers=headers)
+
+
+@app.exception_handler(Exception)
+async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:  # noqa: BLE001
+    logger.exception("Unhandled error in request")
+    content = {"ok": False, "error_code": "internal_error", "message": "Internal server error"}
+    if os.getenv("DEBUG_ERRORS") == "1":
+        content["detail"] = str(exc)
+    return JSONResponse(status_code=500, content=content)
