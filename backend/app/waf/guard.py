@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
+import logging
 import os
 import time
 import uuid
@@ -43,6 +45,8 @@ WAF_LOCKOUT_COOLDOWN_SECONDS = int(os.getenv("WAF_LOCKOUT_COOLDOWN_SECONDS", "21
 WAF_ENFORCE_ROUTES = {p.strip() for p in os.getenv("WAF_ENFORCE_ROUTES", "/api/chat").split(",") if p.strip()}
 
 _HASH_SALT = os.getenv("IDENTITY_HASH_SALT", "dev-salt").encode("utf-8")
+
+logger = logging.getLogger(__name__)
 
 
 class WAFError(Exception):
@@ -87,15 +91,62 @@ def _hash_value(value: str) -> str:
     return h.hexdigest()
 
 
-def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        ip = forwarded.split(",")[0].strip()
-        if ip:
-            return ip
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
+def _get_client_ip(request: Request) -> str:
+    """
+    Determine client IP safely behind a trusted proxy.
+    - Trust X-Forwarded-For only if the immediate peer is in private/CGNAT ranges.
+    - Otherwise, fall back to peer IP.
+    """
+    peer_ip = None
+    try:
+        peer_ip = request.client.host if request.client else None
+    except Exception:
+        peer_ip = None
+
+    def _is_trusted(ip_str: str) -> bool:
+        try:
+            ip_obj = ipaddress.ip_address(ip_str)
+            trusted_nets = [
+                ipaddress.ip_network("100.64.0.0/10"),
+                ipaddress.ip_network("10.0.0.0/8"),
+                ipaddress.ip_network("172.16.0.0/12"),
+                ipaddress.ip_network("192.168.0.0/16"),
+            ]
+            return any(ip_obj in net for net in trusted_nets)
+        except Exception:
+            return False
+
+    forwarded_ip = None
+    try:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            forwarded_ip = forwarded.split(",")[0].strip()
+    except Exception:
+        forwarded_ip = None
+
+    if peer_ip and _is_trusted(peer_ip) and forwarded_ip:
+        return forwarded_ip
+    if peer_ip:
+        return peer_ip
+    return forwarded_ip or "unknown"
+
+
+def _safe_log_rate(request_path: str, key_scope: str, key_value: str, used_memory: bool, allowed: bool, retry_after: Optional[int]) -> None:
+    try:
+        logger.info(
+            "[WAF] rate check",
+            extra={
+                "route": request_path,
+                "key_scope": key_scope,
+                "key_value": key_value,
+                "used_memory": used_memory,
+                "status": "allowed" if allowed else "blocked",
+                "retry_after": retry_after,
+            },
+        )
+    except Exception:
+        # Logging must never break WAF decisions
+        return
 
 
 @dataclass
@@ -344,22 +395,20 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
     now_ts = _now()
 
     # Rate limiting by IP
-    ip_key = RateKey(scope="ip", value=_client_ip(request))
+    ip_value = _get_client_ip(request)
+    ip_key = RateKey(scope="ip", value=ip_value)
     ip_windows = (
         LimitWindow(WAF_IP_BURST_LIMIT, WAF_IP_BURST_WINDOW_SECONDS),
         LimitWindow(WAF_IP_SUSTAIN_LIMIT, WAF_IP_SUSTAIN_WINDOW_SECONDS),
     )
     ip_allowed, ip_retry, ip_used_mem = _rate_check(ip_key, ip_windows, now_ts)
-    logger.info(
-        "[WAF] rate check",
-        extra={
-            "route": request.url.path,
-            "key_scope": ip_key.scope,
-            "key_value": ip_key.hashed().value,
-            "used_memory": ip_used_mem,
-            "status": "allowed" if ip_allowed else "blocked",
-            "retry_after": ip_retry,
-        },
+    _safe_log_rate(
+        getattr(request.url, "path", "/api/chat"),
+        ip_key.scope,
+        ip_key.hashed().value,
+        bool(ip_used_mem),
+        bool(ip_allowed),
+        ip_retry,
     )
     if ip_used_mem:
         request.state.waf_used_memory = True
@@ -374,16 +423,13 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
             LimitWindow(WAF_SUBJECT_SUSTAIN_LIMIT, WAF_SUBJECT_SUSTAIN_WINDOW_SECONDS),
         )
         sub_allowed, sub_retry, sub_used_mem = _rate_check(subject_key, subject_windows, now_ts)
-        logger.info(
-            "[WAF] rate check",
-            extra={
-                "route": request.url.path,
-                "key_scope": subject_key.scope,
-                "key_value": subject_key.value,
-                "used_memory": sub_used_mem,
-                "status": "allowed" if sub_allowed else "blocked",
-                "retry_after": sub_retry,
-            },
+        _safe_log_rate(
+            getattr(request.url, "path", "/api/chat"),
+            subject_key.scope,
+            subject_key.value,
+            bool(sub_used_mem),
+            bool(sub_allowed),
+            sub_retry,
         )
         if sub_used_mem:
             request.state.waf_used_memory = True

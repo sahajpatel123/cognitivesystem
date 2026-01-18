@@ -28,3 +28,4 @@ frontend/next-env.d.ts
 # IDE/editor
 .idea/
 .vscode/
+cookies.txt
