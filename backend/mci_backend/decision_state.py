@@ -170,7 +170,7 @@ class DecisionState:
             required_unknowns.add(UnknownSource.HORIZON)
         if self.responsibility_scope is ResponsibilityScope.UNKNOWN:
             required_unknowns.add(UnknownSource.RESPONSIBILITY_SCOPE)
-        if not self.outcome_classes or any(o is OutcomeClass.UNKNOWN for o in self.outcome_classes):
+        if not self.outcome_classes or any(o is OutcomeClass.UNKNOWN_OUTCOME_CLASS for o in self.outcome_classes):
             required_unknowns.add(UnknownSource.OUTCOME_CLASSES)
 
         if not set(self.explicit_unknown_zone).issuperset(required_unknowns):

@@ -21,11 +21,8 @@ from .plans.tokens import clamp_text_to_token_limit, estimate_tokens_from_text
 from .schemas import ChatRequest, ChatResponse
 from .service import ConversationService
 from .waf.guard import WAFError, waf_dependency
-from backend.mci_backend.decision_assembly import assemble_decision_state
-from backend.mci_backend.expression_assembly import assemble_output_plan
 from backend.mci_backend.governed_response_runtime import render_governed_response
 from backend.mci_backend.model_contract import ModelInvocationResult
-from backend.mci_backend.orchestration_assembly import assemble_control_plan
 from .chat_contract import (
     ChatAction,
     ChatRequest as ContractChatRequest,
@@ -142,6 +139,14 @@ def _failure_response(
     return JSONResponse(status_code=status_code, content=json.loads(payload.json()))
 
 
+def _request_id(request: Request) -> str:
+    return (
+        request.headers.get("x-railway-request-id")
+        or request.headers.get("x-request-id")
+        or str(uuid.uuid4())
+    )
+
+
 @app.get("/health")
 async def health() -> Dict[str, Any]:
     return {
@@ -221,6 +226,20 @@ async def ready() -> JSONResponse:
 
 @app.post("/api/chat", response_model=ContractChatResponse)
 async def governed_chat(request: Request, identity: IdentityContext = Depends(waf_dependency)) -> ContractChatResponse | JSONResponse:
+    rid = _request_id(request)
+    waf_limiter = "memory-fallback" if getattr(request.state, "waf_used_memory", False) else "db"
+    logger.info(
+        "[API] chat start",
+        extra={
+            "route": "/api/chat",
+            "request_id": rid,
+            "subject_type": identity.subject_type,
+            "subject_id": identity.subject_id,
+            "waf_limiter": waf_limiter,
+            "content_length": request.headers.get("content-length"),
+        },
+    )
+
     payload = getattr(request.state, "payload", None)
     if payload is None:
         try:
@@ -232,7 +251,10 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                     "route": "/api/chat",
                     "status_code": 400,
                     "error_code": "json_invalid",
-                    "request_id": request.headers.get("x-request-id"),
+                    "request_id": rid,
+                    "subject_type": identity.subject_type,
+                    "subject_id": identity.subject_id,
+                    "waf_limiter": waf_limiter,
                 },
             )
             return JSONResponse(
@@ -248,7 +270,10 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 "route": "/api/chat",
                 "status_code": 400,
                 "error_code": "user_text_missing",
-                "request_id": request.headers.get("x-request-id"),
+                "request_id": rid,
+                "subject_type": identity.subject_type,
+                "subject_id": identity.subject_id,
+                "waf_limiter": waf_limiter,
             },
         )
         return JSONResponse(
@@ -285,19 +310,35 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                     "route": "/api/chat",
                     "status_code": guard_error.status_code,
                     "error_code": error_code,
-                    "request_id": request.headers.get("x-request-id"),
+                    "request_id": rid,
+                    "subject_type": identity.subject_type,
+                    "subject_id": identity.subject_id,
+                    "plan": plan.value,
+                    "input_chars": len(chat_request.user_text),
+                    "input_tokens": input_tokens,
+                    "budget_estimate": budget_estimate,
+                    "waf_limiter": waf_limiter,
                 },
             )
         return guard_error
 
     try:
-        trace_id = str(uuid.uuid4())
-        decision_id = str(uuid.uuid4())
-        decision_state = assemble_decision_state(decision_id=decision_id, trace_id=trace_id, message=chat_request.user_text)
-        control_plan = assemble_control_plan(chat_request.user_text, decision_state)
-        output_plan = assemble_output_plan(chat_request.user_text, decision_state, control_plan)
         result = render_governed_response(chat_request.user_text)
-    except Exception:
+    except Exception as exc:
+        logger.exception(
+            "[API] chat internal error",
+            extra={
+                "route": "/api/chat",
+                "request_id": rid,
+                "subject_type": identity.subject_type,
+                "subject_id": identity.subject_id,
+                "plan": plan.value,
+                "input_chars": len(chat_request.user_text),
+                "input_tokens": input_tokens,
+                "waf_limiter": waf_limiter,
+                "exc_type": type(exc).__name__,
+            },
+        )
         return _failure_response(
             status_code=500,
             failure_type=FailureType.INTERNAL_ERROR_SANITIZED,
@@ -322,10 +363,31 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
         headers = {}
         if getattr(request.state, "waf_used_memory", False):
             headers["X-WAF-Limiter"] = "memory-fallback"
+        logger.info(
+            "[API] chat governed failure",
+            extra={
+                "route": "/api/chat",
+                "request_id": rid,
+                "subject_type": identity.subject_type,
+                "subject_id": identity.subject_id,
+                "plan": plan.value,
+                "input_chars": len(chat_request.user_text),
+                "input_tokens": input_tokens,
+                "tokens_used": tokens_used,
+                "failure_type": failure_type.value,
+                "failure_reason": failure_reason,
+                "status_code": 200,
+                "waf_limiter": waf_limiter,
+            },
+        )
         return JSONResponse(status_code=200, content=json_payload, headers=headers)
 
+    action_value = ChatAction.ANSWER.value
+    if result.output_json and isinstance(result.output_json, dict) and "question" in result.output_json:
+        action_value = ChatAction.ASK_ONE_QUESTION.value
+
     response = ContractChatResponse(
-        action=ChatAction(output_plan.action.value),
+        action=ChatAction(action_value),
         rendered_text=rendered_text if rendered_text.strip() else "Governed response unavailable.",
         failure_type=None,
         failure_reason=None,
@@ -336,6 +398,21 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
     headers = {}
     if getattr(request.state, "waf_used_memory", False):
         headers["X-WAF-Limiter"] = "memory-fallback"
+    logger.info(
+        "[API] chat success",
+        extra={
+            "route": "/api/chat",
+            "request_id": rid,
+            "subject_type": identity.subject_type,
+            "subject_id": identity.subject_id,
+            "plan": plan.value,
+            "input_chars": len(chat_request.user_text),
+            "input_tokens": input_tokens,
+            "tokens_used": tokens_used,
+            "status_code": 200,
+            "waf_limiter": waf_limiter,
+        },
+    )
     return JSONResponse(status_code=200, content=json_payload, headers=headers)
 
 
