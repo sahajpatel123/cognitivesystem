@@ -4,6 +4,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import time
 from logging.config import dictConfig
 from typing import Any, Dict
@@ -159,7 +160,44 @@ def _failure_response(
 
 
 def _request_id(request: Request) -> str:
-    return get_request_id(request)
+    try:
+        existing = getattr(request.state, "request_id", None)
+        if isinstance(existing, str) and existing.strip():
+            return existing.strip()
+    except Exception:
+        pass
+    rid = get_request_id(request)
+    try:
+        request.state.request_id = rid
+    except Exception:
+        pass
+    return rid
+
+
+def _debug_enabled() -> bool:
+    val = str(getattr(_settings, "debug_errors", "0")).lower()
+    return val in {"1", "true", "yes"}
+
+
+_SECRET_PATTERNS = [
+    re.compile(r"sk-[A-Za-z0-9]{8,}"),
+    re.compile(r"[A-Za-z0-9_\-]{24,}"),
+]
+
+
+def _redact_debug_detail(message: str) -> str:
+    redacted = message
+    for pattern in _SECRET_PATTERNS:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
+
+
+def _internal_error_reason(exc: Exception, request_id: str) -> str:
+    if not _debug_enabled():
+        return "sanitized failure"
+    message = _redact_debug_detail(str(exc))[:300]
+    exc_name = type(exc).__name__
+    return f"debug:{exc_name}: {message} request_id={request_id}"
 
 
 def _waf_meta(request: Request) -> dict:
@@ -477,16 +515,15 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
     try:
         result = render_governed_response(chat_request.user_text)
     except Exception as exc:
+        hashed = hash_subject(identity.subject_type, identity.subject_id)
         logger.exception(
             "[API] chat internal error",
             extra={
                 "route": "/api/chat",
                 "request_id": rid,
                 "subject_type": identity.subject_type,
-                "subject_id": identity.subject_id,
+                "hashed_subject": hashed,
                 "plan": plan.value,
-                "input_chars": len(chat_request.user_text),
-                "input_tokens": input_tokens,
                 "waf_limiter": waf_limiter,
                 "exc_type": type(exc).__name__,
             },
@@ -508,7 +545,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
         return _failure_response(
             status_code=500,
             failure_type=FailureType.INTERNAL_ERROR_SANITIZED,
-            reason="sanitized failure",
+            reason=_internal_error_reason(exc, rid),
             action=ChatAction.FALLBACK,
         )
 
