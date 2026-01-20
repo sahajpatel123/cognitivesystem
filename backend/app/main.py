@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
 import time
-import uuid
 from logging.config import dictConfig
-import datetime
 from typing import Any, Dict
 
 from fastapi import Depends, FastAPI, Path, Request, Response
@@ -14,7 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from .auth.identity import ANON_COOKIE_NAME, IdentityContext
-from .config import settings
+from backend.app.config import (
+    get_settings,
+    settings,
+    settings_public_summary,
+    validate_for_env,
+    safe_error_detail,
+)
 from .db import check_db_connection
 from .deps.identity import identity_dependency
 from .deps.plan_guard import post_accounting, precheck_plan_and_quotas
@@ -22,7 +27,14 @@ from .plans.tokens import clamp_text_to_token_limit, estimate_tokens_from_text
 from .schemas import ChatRequest, ChatResponse
 from .service import ConversationService
 from .waf.guard import WAFError, waf_dependency
-from backend.mci_backend.governed_response_runtime import render_governed_response
+from backend.app.providers import (
+    ProviderCircuitOpenError,
+    ProviderDisabledError,
+    ProviderMisconfiguredError,
+    ProviderTimeoutError,
+    ProviderUpstreamError,
+    call_model,
+)
 from backend.mci_backend.model_contract import ModelInvocationResult
 from backend.app.observability import get_request_id, structured_log, hash_subject, record_invocation
 from .chat_contract import (
@@ -62,6 +74,23 @@ APP_VERSION = "2026.15.1"
 _start_time = time.monotonic()
 
 app = FastAPI(title="Cognitive Conversational Prototype")
+_settings = get_settings()
+_settings_summary = validate_for_env(_settings)
+logger.info(
+    "[CFG] loaded",
+    extra={
+        "env": _settings_summary.get("env"),
+        "provider": _settings_summary.get("model_provider"),
+        "model": _settings_summary.get("model_name"),
+        "enabled": _settings_summary.get("model_calls_enabled"),
+        "timeouts": {
+            "request": _settings_summary.get("model_timeout_seconds"),
+            "connect": _settings_summary.get("model_connect_timeout_seconds"),
+        },
+        "token_caps": _settings_summary.get("token_caps"),
+        "issues": _settings_summary.get("issues"),
+    },
+)
 
 
 def _configured_origins() -> list[str]:
@@ -248,26 +277,26 @@ async def logout(response: Response) -> Dict[str, str]:
 
 
 def _env_missing(required: list[str]) -> list[str]:
-    return [var for var in required if not os.getenv(var)]
+    return [var for var in required if not getattr(_settings, var.lower(), None)]
 
 
 @app.get("/ready")
 async def ready() -> JSONResponse:
     try:
-        current_env = os.getenv("ENV", settings.env)
-        required = settings.required_env_vars()
-        missing = _env_missing(required) if current_env.lower() == "production" else []
+        current_env = _settings.app_env
+        required = _settings.required_env_vars()
+        missing = _env_missing(required) if current_env.lower() == "prod" else []
 
-        db_status = {"configured": bool(os.getenv("DATABASE_URL") or settings.database_url), "ok": True}
+        db_status = {"configured": bool(_settings.database_url), "ok": True}
         if db_status["configured"]:
             db_ok, db_reason = check_db_connection()
             db_status["ok"] = db_ok
             if db_reason:
                 db_status["reason"] = db_reason
 
-        model_key_present = bool(os.getenv("MODEL_PROVIDER_API_KEY") or settings.model_provider_api_key)
+        model_key_present = bool(_settings.model_provider_api_key)
 
-        if current_env.lower() == "production":
+        if current_env.lower() == "prod":
             if missing:
                 return JSONResponse(
                     status_code=503,
@@ -276,7 +305,7 @@ async def ready() -> JSONResponse:
             if not model_key_present:
                 return JSONResponse(
                     status_code=503,
-                    content={"status": "not_ready", "missing_env": ["MODEL_PROVIDER_API_KEY"], "db": db_status},
+                    content={"status": "not_ready", "missing_env": ["MODEL_API_KEY"], "db": db_status},
                 )
             if not db_status["ok"]:
                 return JSONResponse(status_code=503, content={"status": "not_ready", "db": db_status})
@@ -605,6 +634,6 @@ async def handle_waf_error(request: Request, exc: WAFError) -> JSONResponse:  # 
 async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:  # noqa: BLE001
     logger.exception("Unhandled error in request")
     content = {"ok": False, "error_code": "internal_error", "message": "Internal server error"}
-    if os.getenv("DEBUG_ERRORS") == "1":
+    if str(_settings.debug_errors) == "1":
         content["detail"] = str(exc)
     return JSONResponse(status_code=500, content=content)

@@ -16,6 +16,7 @@ from fastapi import Depends, Request
 from backend.app.auth.identity import IdentityContext
 from backend.app.deps.identity import identity_dependency
 from backend.app.observability.request_id import get_request_id
+from backend.app.config import get_settings
 
 try:
     from backend.app.db.database import get_db_connection
@@ -23,29 +24,31 @@ except Exception:  # pragma: no cover
     get_db_connection = None  # type: ignore
 
 
+settings = get_settings()
+
 # Environment-driven WAF settings
-WAF_MAX_BODY_BYTES = int(os.getenv("WAF_MAX_BODY_BYTES", "200000"))
-WAF_MAX_USER_TEXT_CHARS = int(os.getenv("WAF_MAX_USER_TEXT_CHARS", "8000"))
+WAF_MAX_BODY_BYTES = int(settings.waf_max_body_bytes)
+WAF_MAX_USER_TEXT_CHARS = int(settings.waf_max_user_text_chars)
 
-WAF_IP_BURST_LIMIT = int(os.getenv("WAF_IP_BURST_LIMIT", "5"))
-WAF_IP_BURST_WINDOW_SECONDS = int(os.getenv("WAF_IP_BURST_WINDOW_SECONDS", "10"))
-WAF_IP_SUSTAIN_LIMIT = int(os.getenv("WAF_IP_SUSTAIN_LIMIT", "60"))
-WAF_IP_SUSTAIN_WINDOW_SECONDS = int(os.getenv("WAF_IP_SUSTAIN_WINDOW_SECONDS", "60"))
+WAF_IP_BURST_LIMIT = int(settings.waf_ip_burst_limit)
+WAF_IP_BURST_WINDOW_SECONDS = int(settings.waf_ip_burst_window_seconds)
+WAF_IP_SUSTAIN_LIMIT = int(settings.waf_ip_sustain_limit)
+WAF_IP_SUSTAIN_WINDOW_SECONDS = int(settings.waf_ip_sustain_window_seconds)
 
-WAF_SUBJECT_BURST_LIMIT = int(os.getenv("WAF_SUBJECT_BURST_LIMIT", "8"))
-WAF_SUBJECT_BURST_WINDOW_SECONDS = int(os.getenv("WAF_SUBJECT_BURST_WINDOW_SECONDS", "10"))
-WAF_SUBJECT_SUSTAIN_LIMIT = int(os.getenv("WAF_SUBJECT_SUSTAIN_LIMIT", "120"))
-WAF_SUBJECT_SUSTAIN_WINDOW_SECONDS = int(os.getenv("WAF_SUBJECT_SUSTAIN_WINDOW_SECONDS", "60"))
+WAF_SUBJECT_BURST_LIMIT = int(settings.waf_subject_burst_limit)
+WAF_SUBJECT_BURST_WINDOW_SECONDS = int(settings.waf_subject_burst_window_seconds)
+WAF_SUBJECT_SUSTAIN_LIMIT = int(settings.waf_subject_sustain_limit)
+WAF_SUBJECT_SUSTAIN_WINDOW_SECONDS = int(settings.waf_subject_sustain_window_seconds)
 
-_lockout_schedule_raw = os.getenv("WAF_LOCKOUT_SCHEDULE_SECONDS", "30,120,600,3600")
+_lockout_schedule_raw = settings.waf_lockout_schedule_seconds
 WAF_LOCKOUT_SCHEDULE_SECONDS = tuple(
-    s for s in (int(x) for x in _lockout_schedule_raw.split(",") if x.strip()) if s > 0
+    s for s in (int(x) for x in _lockout_schedule_raw.split(",") if str(x).strip()) if s > 0
 ) or (30, 120, 600, 3600)
-WAF_LOCKOUT_COOLDOWN_SECONDS = int(os.getenv("WAF_LOCKOUT_COOLDOWN_SECONDS", "21600"))
+WAF_LOCKOUT_COOLDOWN_SECONDS = int(settings.waf_lockout_cooldown_seconds)
 
-WAF_ENFORCE_ROUTES = {p.strip() for p in os.getenv("WAF_ENFORCE_ROUTES", "/api/chat").split(",") if p.strip()}
+WAF_ENFORCE_ROUTES = {p.strip() for p in settings.waf_enforce_routes.split(",") if p.strip()}
 
-_HASH_SALT = os.getenv("IDENTITY_HASH_SALT", "dev-salt").encode("utf-8")
+_HASH_SALT = settings.identity_hash_salt.encode("utf-8")
 
 logger = logging.getLogger(__name__)
 

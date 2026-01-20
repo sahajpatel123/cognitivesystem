@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Optional
 
 import httpx
 
-from .config import settings
+from backend.app.config import get_settings
 from .enforcement import (
     ExpressionAdapterInput,
     ReasoningAdapterInput,
@@ -40,20 +40,40 @@ class LLMClient:
     - These roles MUST remain separate.
     """
 
+    def __init__(
+        self,
+        *,
+        api_base: Optional[str] = None,
+        api_key: Optional[str] = None,
+        timeout_seconds: float = 30.0,
+        connect_timeout_seconds: float = 10.0,
+        request_id_header: str = "x-request-id",
+        request_id_value: Optional[str] = None,
+    ) -> None:
+        s = get_settings()
+        self.api_base = api_base or s.model_base_url or s.model_provider_base_url or s.llm_api_base
+        self.api_key = api_key or s.model_api_key or s.llm_api_key
+        self.timeout_seconds = timeout_seconds or float(s.model_timeout_seconds)
+        self.connect_timeout_seconds = connect_timeout_seconds or float(s.model_connect_timeout_seconds)
+        self.request_id_header = request_id_header or s.request_id_header
+        self.request_id_value = request_id_value
+
     def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        if not settings.llm_api_base or not settings.llm_api_key:
-            raise RuntimeError("LLM configuration missing (LLM_API_BASE / LLM_API_KEY)")
+        if not self.api_base or not self.api_key:
+            raise RuntimeError("LLM configuration missing (api_base / api_key)")
 
         headers = {
-            "Authorization": f"Bearer {settings.llm_api_key}",
+            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        if self.request_id_value:
+            headers[self.request_id_header] = self.request_id_value
 
-        logger.info("[LLM] HTTP request", extra={"payload": payload})
+        timeout = httpx.Timeout(self.timeout_seconds, connect=self.connect_timeout_seconds)
 
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=timeout) as client:
             try:
-                resp = client.post(settings.llm_api_base, headers=headers, json=payload)
+                resp = client.post(self.api_base, headers=headers, json=payload)
                 resp.raise_for_status()
                 try:
                     data = resp.json()
@@ -63,6 +83,12 @@ class LLMClient:
                         reason="LLM adapter returned non-JSON response",
                         detail={"error": str(exc)},
                     ) from exc
+            except httpx.TimeoutException as exc:
+                raise build_failure(
+                    violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
+                    reason="LLM adapter HTTP request timeout",
+                    detail={"error": str(exc)},
+                ) from exc
             except httpx.HTTPError as exc:
                 raise build_failure(
                     violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
@@ -70,7 +96,6 @@ class LLMClient:
                     detail={"error": str(exc)},
                 ) from exc
 
-        logger.info("[LLM] HTTP raw response", extra={"response": data})
         return data
 
     # ------------------------

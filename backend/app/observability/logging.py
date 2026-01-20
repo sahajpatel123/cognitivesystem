@@ -3,12 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 from typing import Any, Dict
+
+from backend.app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_OBS_SALT = (os.getenv("IDENTITY_HASH_SALT") or os.getenv("OBS_HASH_SALT") or "obs-salt").encode("utf-8")
+_OBS_SALT = get_settings().identity_hash_salt.encode("utf-8")
 
 
 def hash_subject(subject_type: str | None, subject_id: str | None) -> str:

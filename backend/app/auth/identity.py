@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -10,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
 import httpx
+from backend.app.config import get_settings
 from jose import jwt
 from jose.exceptions import JWTError
 
@@ -20,9 +20,12 @@ except Exception:  # pragma: no cover
 
 HASH_ALGO = "sha256"
 JWKS_CACHE_TTL = 300  # seconds
-ANON_COOKIE_NAME = "anon_id"
+ANON_COOKIE_NAME = "anon_session"
 
 _jwks_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+_settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,18 +47,18 @@ def _hash_value(value: str, salt: str) -> str:
 
 
 def _get_salt() -> str:
-    return os.getenv("IDENTITY_HASH_SALT", "dev-salt")
+    return _settings.identity_hash_salt
 
 
 def _hash_ip(ip: str | None) -> str:
     if not ip:
-        return _hash_value("unknown-ip", _get_salt())
+        return "ip:unknown"
     return _hash_value(ip, _get_salt())
 
 
 def _hash_ua(ua: str | None) -> str:
     if not ua:
-        return _hash_value("unknown-ua", _get_salt())
+        return "ua:unknown"
     return _hash_value(ua, _get_salt())
 
 
@@ -112,7 +115,7 @@ def _ensure_anon_cookie(request, response, ttl_days: int = 30) -> str:
         return existing
     anon_id = str(uuid.uuid4())
     max_age = ttl_days * 24 * 60 * 60
-    secure_flag = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
+    secure_flag = str(_settings.auth_cookie_secure).lower() == "true" if hasattr(_settings, "auth_cookie_secure") else False
     response.set_cookie(
         key=ANON_COOKIE_NAME,
         value=anon_id,
@@ -157,15 +160,15 @@ def _maybe_record_session(anon_id: Optional[str], ip_hash: str, ua_hash: str, tt
 def _build_identity_context(request, response) -> IdentityContext:
     auth_header = request.headers.get("authorization")
     token = _parse_authorization(auth_header)
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_aud = os.getenv("SUPABASE_JWT_AUD", "authenticated")
-    supabase_issuer = os.getenv("SUPABASE_JWT_ISSUER")
+    supabase_url = _settings.supabase_url
+    supabase_aud = _settings.supabase_jwt_aud
+    supabase_issuer = _settings.supabase_jwt_issuer
 
     user_id: Optional[str] = None
     if token and supabase_url:
         user_id = _verify_jwt(token, supabase_url, supabase_aud, supabase_issuer)
 
-    anon_ttl = int(os.getenv("ANON_SESSION_TTL_DAYS", "30"))
+    anon_ttl = int(_settings.anon_session_ttl_days)
     anon_id = None
     if not user_id:
         anon_id = _ensure_anon_cookie(request, response, ttl_days=anon_ttl)
@@ -194,10 +197,10 @@ def _build_identity_context(request, response) -> IdentityContext:
     )
 
 
-def get_identity_context(request, response) -> IdentityContext:
+def identity_dependency(request, response) -> IdentityContext:
     ctx = _build_identity_context(request, response)
     # Record anon session best-effort (bounded metadata only)
     if ctx.anon_id and not ctx.is_authenticated:
-        ttl_days = int(os.getenv("ANON_SESSION_TTL_DAYS", "30"))
+        ttl_days = int(_settings.anon_session_ttl_days)
         _maybe_record_session(ctx.anon_id, ctx.ip_hash, ctx.user_agent_hash, ttl_days)
     return ctx

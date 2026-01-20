@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Iterable
+
+from backend.app.config import get_settings
 
 
 class Plan(str, Enum):
@@ -48,6 +49,9 @@ def _parse_subject_list(value: str | None) -> set[str]:
     return {item.strip() for item in value.split(",") if item.strip()}
 
 
+_settings = get_settings()
+
+
 def _first_non_empty(items: Iterable[str | None], default: str) -> str:
     for item in items:
         if item and item.strip():
@@ -57,12 +61,12 @@ def _first_non_empty(items: Iterable[str | None], default: str) -> str:
 
 def resolve_plan(subject_id: str | None) -> Plan:
     """Resolve plan from env overrides, defaulting to FREE."""
-    plan_default = _first_non_empty([os.getenv("PLAN_DEFAULT")], Plan.FREE.value).lower()
+    plan_default = _first_non_empty([_settings.plan_default], Plan.FREE.value).lower()
     default_plan = Plan(plan_default) if plan_default in Plan._value2member_map_ else Plan.FREE
 
     if subject_id:
-        max_subjects = _parse_subject_list(os.getenv("MAX_SUBJECTS"))
-        pro_subjects = _parse_subject_list(os.getenv("PRO_SUBJECTS"))
+        max_subjects = _parse_subject_list(_settings.max_subjects)
+        pro_subjects = _parse_subject_list(_settings.pro_subjects)
         if subject_id in max_subjects:
             return Plan.MAX
         if subject_id in pro_subjects:
