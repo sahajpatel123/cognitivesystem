@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", protected_namespaces=("settings_",), case_sensitive=False)
 
     # App / env
     app_env: str = Field("dev", alias="APP_ENV")
@@ -75,24 +75,36 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors(cls, v: Any) -> List[str]:
-        if v is None:
-            return []
+        defaults = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+        if v is None or v == "":
+            return defaults
         if isinstance(v, list):
-            return [str(item).strip() for item in v if str(item).strip()]
+            cleaned = [str(item).strip() for item in v if str(item).strip()]
+            return cleaned or defaults
         if isinstance(v, str):
             text = v.strip()
             if not text:
-                return []
+                return defaults
             if text == "*":
                 return ["*"]
+            # Try JSON first
             try:
                 parsed = json.loads(text)
                 if isinstance(parsed, list):
                     return [str(item).strip() for item in parsed if str(item).strip()]
+                if isinstance(parsed, str):
+                    parsed = parsed.strip()
+                    return [parsed] if parsed else defaults
             except Exception:
+                # fallback to CSV
                 pass
             return [item.strip() for item in text.split(",") if item.strip()]
-        return []
+        return defaults
 
     @field_validator(
         "model_calls_enabled",
