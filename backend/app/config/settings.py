@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # Legacy / compatibility
     backend_public_base_url: Optional[str] = Field(None, alias="BACKEND_PUBLIC_BASE_URL")
-    cors_origins: List[str] = Field(default_factory=list, alias="CORS_ORIGINS")
+    cors_origins: Optional[str] = Field(None, alias="CORS_ORIGINS")
     database_url: Optional[str] = Field(None, alias="DATABASE_URL")
     supabase_url: Optional[str] = Field(None, alias="SUPABASE_URL")
     supabase_anon_key: Optional[str] = Field(None, alias="SUPABASE_ANON_KEY")
@@ -72,40 +72,6 @@ class Settings(BaseSettings):
     llm_api_base: Optional[str] = Field(None, alias="LLM_API_BASE")
     llm_api_key: Optional[str] = Field(None, alias="LLM_API_KEY")
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_cors(cls, v: Any) -> List[str]:
-        defaults = [
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ]
-        if v is None or v == "":
-            return defaults
-        if isinstance(v, list):
-            cleaned = [str(item).strip() for item in v if str(item).strip()]
-            return cleaned or defaults
-        if isinstance(v, str):
-            text = v.strip()
-            if not text:
-                return defaults
-            if text == "*":
-                return ["*"]
-            # Try JSON first
-            try:
-                parsed = json.loads(text)
-                if isinstance(parsed, list):
-                    return [str(item).strip() for item in parsed if str(item).strip()]
-                if isinstance(parsed, str):
-                    parsed = parsed.strip()
-                    return [parsed] if parsed else defaults
-            except Exception:
-                # fallback to CSV
-                pass
-            return [item.strip() for item in text.split(",") if item.strip()]
-        return defaults
-
     @field_validator(
         "model_calls_enabled",
         "debug_errors",
@@ -149,6 +115,31 @@ class Settings(BaseSettings):
     @property
     def provider_base_url(self) -> Optional[str]:
         return self.model_base_url or self.model_provider_base_url or self.llm_api_base
+
+    def cors_origins_list(self) -> List[str]:
+        defaults = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+        raw = self.cors_origins
+        if raw is None or str(raw).strip() == "":
+            return defaults
+        text = str(raw).strip()
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                cleaned = [str(item).strip() for item in parsed if str(item).strip()]
+                return cleaned or defaults
+            if isinstance(parsed, str):
+                parsed = parsed.strip()
+                return [parsed] if parsed else defaults
+        except Exception:
+            # fall back to CSV parsing
+            pass
+        cleaned = [item.strip() for item in text.split(",") if item.strip()]
+        return cleaned or defaults
 
     def required_env_vars(self) -> list[str]:
         return ["BACKEND_PUBLIC_BASE_URL", "CORS_ORIGINS", "MODEL_API_KEY"]

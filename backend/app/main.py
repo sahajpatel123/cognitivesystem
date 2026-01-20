@@ -93,19 +93,7 @@ logger.info(
 )
 
 
-def _configured_origins() -> list[str]:
-    if settings.cors_origins:
-        # If "*" present, permit all
-        if "*" in settings.cors_origins:
-            return ["*"]
-        return settings.cors_origins
-    return [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ]
-
-
-_ALLOWED_ORIGINS = _configured_origins()
+_ALLOWED_ORIGINS = _settings.cors_origins_list()
 
 
 app.add_middleware(
