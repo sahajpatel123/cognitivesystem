@@ -153,7 +153,17 @@ export default function ChatPage() {
         body: JSON.stringify(requestBody),
       });
       if (!res.ok) {
-        throw new FailClosedError("non-200");
+        let friendly = "Request failed. Please retry.";
+        if (res.status === 415) {
+          friendly = "Content type not supported. Use application/json.";
+        } else if (res.status === 429) {
+          friendly = "Rate limit or quota reached. Please wait and try again.";
+        } else if (res.status >= 500) {
+          friendly = "Service is unavailable right now. Please try again.";
+        }
+        pushSystemMessage(friendly, "FALLBACK");
+        setUiState("FAILED");
+        return;
       }
       const raw = await res.json();
       if (pendingRequestId.current !== currentRequestId) {
@@ -246,6 +256,9 @@ export default function ChatPage() {
         <span className="eyebrow">Governed chat</span>
         <h1>Text-in / text-out, tool-only.</h1>
         <p>All responses flow through the certified governance pipeline. No retries, no bypasses.</p>
+        <div className="chat-disclaimer" role="note">
+          <p>Not medical, legal, or financial advice. Verify independently. We may enforce rate limits and quotas to prevent abuse.</p>
+        </div>
         {process.env.NEXT_PUBLIC_ENV !== "production" && (
           <div className="env-banner" role="status">
             DEV MODE — Using {process.env.NEXT_PUBLIC_API_BASE_URL ?? "unset"} as API base
@@ -451,6 +464,15 @@ export default function ChatPage() {
         .chat-controls button:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+        }
+        .chat-disclaimer {
+          margin-top: 8px;
+          padding: 10px 12px;
+          border: 1px solid #1f2937;
+          border-radius: 10px;
+          background: #0d1320;
+          color: #cbd5e1;
+          font-size: 13px;
         }
       `}</style>
     </div>
