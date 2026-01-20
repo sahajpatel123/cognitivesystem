@@ -37,6 +37,7 @@ from backend.app.providers import (
     call_model,
 )
 from backend.mci_backend.model_contract import ModelInvocationResult
+from backend.mci_backend.governed_response_runtime import render_governed_response
 from backend.app.observability import get_request_id, structured_log, hash_subject, record_invocation
 from .chat_contract import (
     ChatAction,
@@ -195,8 +196,18 @@ def _redact_debug_detail(message: str) -> str:
 def _internal_error_reason(exc: Exception, request_id: str) -> str:
     if not _debug_enabled():
         return "sanitized failure"
-    message = _redact_debug_detail(str(exc))[:300]
     exc_name = type(exc).__name__
+    if isinstance(exc, NameError):
+        missing = ""
+        try:
+            missing = getattr(exc, "name", "") or ""
+        except Exception:
+            missing = ""
+        missing = (missing or "").strip()
+        detail = missing if missing else _redact_debug_detail(str(exc))
+        detail = detail[:300]
+        return f"debug:{exc_name}: {detail} request_id={request_id}"
+    message = _redact_debug_detail(str(exc))[:300]
     return f"debug:{exc_name}: {message} request_id={request_id}"
 
 
@@ -383,11 +394,6 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                     "waf_limiter": waf_limiter,
                 },
             )
-            return JSONResponse(
-                status_code=400,
-                content={"ok": False, "error_code": "json_invalid", "message": "Request body must be valid JSON."},
-            )
-        finally:
             _log_chat_summary(
                 request=request,
                 request_id=rid,
@@ -400,6 +406,10 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 output_tokens_est=None,
                 error_code="json_invalid",
                 waf_limiter=waf_limiter,
+            )
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error_code": "json_invalid", "message": "Request body must be valid JSON."},
             )
 
     user_text = payload.get("user_text") if isinstance(payload, dict) else None
