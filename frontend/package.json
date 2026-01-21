@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "lint": "next lint",
     "test:ui": "playwright test",
     "test:ui:phase13": "playwright test frontend/tests/phase13_ui_abuse.spec.ts",
     "test:ui:phase14": "playwright test frontend/tests/phase14_ui_attack.spec.ts",
