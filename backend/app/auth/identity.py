@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import httpx
 from backend.app.config import get_settings
+from backend.app.perf.http_client import get_shared_httpx_client
 from jose import jwt
 from jose.exceptions import JWTError
 
@@ -69,12 +70,12 @@ def _load_jwks(supabase_url: str) -> Dict[str, Any]:
     if cached and now - cached[0] < JWKS_CACHE_TTL:
         return cached[1]
     jwks_url = supabase_url.rstrip("/") + "/auth/v1/keys"
-    with httpx.Client(timeout=5.0) as client:
-        resp = client.get(jwks_url)
-        resp.raise_for_status()
-        data = resp.json()
-        _jwks_cache[supabase_url] = (now, data)
-        return data
+    client = get_shared_httpx_client()
+    resp = client.get(jwks_url)
+    resp.raise_for_status()
+    data = resp.json()
+    _jwks_cache[supabase_url] = (now, data)
+    return data
 
 
 def _verify_jwt(token: str, supabase_url: str, audience: str | None, issuer: str | None) -> Optional[str]:
