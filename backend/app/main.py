@@ -28,6 +28,9 @@ from backend.app.chat_contract import (
     FailureType,
     MAX_PAYLOAD_BYTES,
 )
+from backend.app.cost import get_cost_policy
+from backend.mci_backend.governed_response_runtime import render_governed_response
+from backend.mci_backend.model_contract import ModelInvocationResult
 from backend.app.schemas import ChatRequest, ChatResponse
 from backend.app.service import ConversationService
 from backend.app.config import get_settings, safe_error_detail, settings_public_summary
@@ -110,6 +113,7 @@ app.add_middleware(
 )
 
 service = ConversationService()
+cost_policy = get_cost_policy()
 
 
 @app.post("/v1/sessions/{session_id}/messages", response_model=ChatResponse)
@@ -228,6 +232,14 @@ def _plan_meta(request: Request) -> dict:
         return meta if isinstance(meta, dict) else {}
     except Exception:
         return {}
+
+
+def _actor_key(identity: IdentityContext) -> str:
+    if identity.user_id:
+        return f"user:{identity.user_id}"
+    if identity.anon_id:
+        return f"anon:{identity.anon_id}"
+    return f"subject:{identity.subject_id}"
 
 
 def _log_chat_summary(
@@ -551,6 +563,58 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 )
             return guard_error
 
+        actor_key = _actor_key(identity)
+        cost_pre = cost_policy.precheck(
+            request_id=rid,
+            actor_key=actor_key,
+            ip_hash=identity.ip_hash,
+            est_input_tokens=input_tokens,
+            est_output_cap=limits.max_output_tokens,
+        )
+        if not cost_pre.allowed:
+            status_code = 503 if cost_pre.scope == "breaker" else 429
+            failure_type = FailureType.PROVIDER_UNAVAILABLE if cost_pre.scope == "breaker" else FailureType.BUDGET_EXCEEDED
+            reason = "temporarily unavailable" if cost_pre.scope == "breaker" else "cost budget exceeded"
+            if cost_pre.scope == "request_cap":
+                reason = "request exceeds cost cap"
+            retry_after = cost_pre.retry_after_s
+            latency_ms = (time.monotonic() - start_ts) * 1000
+            cost_policy.record_failure(
+                request_id=rid,
+                actor_key=actor_key,
+                ip_hash=identity.ip_hash,
+                outcome="breaker_open" if cost_pre.scope == "breaker" else "budget_blocked",
+                latency_ms=latency_ms,
+                is_provider_failure=False,
+                budget_scope=cost_pre.scope,
+            )
+            headers = {}
+            if retry_after is not None:
+                headers["Retry-After"] = str(retry_after)
+            _log_chat_summary(
+                request=request,
+                request_id=rid,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                plan_value=plan.value,
+                subject_type=identity.subject_type,
+                subject_id=identity.subject_id,
+                input_tokens=input_tokens,
+                output_tokens_est=limits.max_output_tokens,
+                error_code=f"cost_{cost_pre.scope or 'block'}",
+                waf_limiter=waf_limiter,
+                budget_ms_total=budget_ms_total,
+                timeout_where=None,
+                http_timeout_ms=http_timeout_ms,
+            )
+            payload = ContractChatResponse(
+                action=ChatAction.FALLBACK,
+                rendered_text="Cost protection is active. Please try again later.",
+                failure_type=failure_type,
+                failure_reason=reason[:200],
+            )
+            return JSONResponse(status_code=status_code, content=json.loads(payload.json()), headers=headers)
+
         model_timeout_ms_value = model_call_timeout_ms()
         budget_remaining_before_model = remaining_budget_ms(start_ts, budget_ms_total)
         effective_model_timeout_ms = max(1000, min(model_timeout_ms_value, budget_remaining_before_model))
@@ -559,6 +623,15 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
         if budget_remaining_before_model <= 0:
             latency_ms = (time.monotonic() - start_ts) * 1000
             error_code = "timeout_budget_exhausted"
+            cost_policy.record_failure(
+                request_id=rid,
+                actor_key=actor_key,
+                ip_hash=identity.ip_hash,
+                outcome="budget_remaining_exhausted",
+                latency_ms=latency_ms,
+                is_provider_failure=False,
+                budget_scope="request_budget",
+            )
             _log_chat_summary(
                 request=request,
                 request_id=rid,
@@ -594,6 +667,15 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             if isinstance(exc, (asyncio.TimeoutError, PerfTimeoutError)):
                 latency_ms = (time.monotonic() - start_ts) * 1000
                 error_code = "timeout"
+                cost_policy.record_failure(
+                    request_id=rid,
+                    actor_key=actor_key,
+                    ip_hash=identity.ip_hash,
+                    outcome="timeout_model",
+                    latency_ms=latency_ms,
+                    is_provider_failure=True,
+                    budget_scope="model_timeout",
+                )
                 _log_chat_summary(
                     request=request,
                     request_id=rid,
@@ -659,22 +741,54 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
 
         rendered_text = _extract_rendered_text(result) or "Governed response unavailable."
         rendered_text = clamp_text_to_token_limit(rendered_text, limits.max_output_tokens)
+        output_tokens_est = estimate_tokens_from_text(rendered_text)
         if not result.ok and result.failure:
             failure_type = FailureType.GOVERNED_PIPELINE_ABORTED
             failure_reason = result.failure.reason_code[:200]
+            provider_failure = False
+            try:
+                from backend.mci_backend.model_contract import ModelFailureType  # local import to avoid cycle
+
+                provider_failure = result.failure.failure_type in (
+                    ModelFailureType.TIMEOUT,
+                    ModelFailureType.PROVIDER_ERROR,
+                )
+            except Exception:
+                provider_failure = False
             response = ContractChatResponse(
                 action=ChatAction.FALLBACK,
                 rendered_text=rendered_text,
                 failure_type=failure_type,
                 failure_reason=failure_reason,
             )
-            tokens_used = input_tokens + estimate_tokens_from_text(rendered_text)
+            tokens_used = input_tokens + output_tokens_est
             post_accounting(identity, tokens_used)
+            latency_ms = (time.monotonic() - start_ts) * 1000
+            if provider_failure:
+                cost_policy.record_failure(
+                    request_id=rid,
+                    actor_key=actor_key,
+                    ip_hash=identity.ip_hash,
+                    outcome="provider_failure",
+                    latency_ms=latency_ms,
+                    is_provider_failure=True,
+                    budget_scope=None,
+                )
+            else:
+                cost_policy.record_success(
+                    request_id=rid,
+                    actor_key=actor_key,
+                    ip_hash=identity.ip_hash,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens_est,
+                    latency_ms=latency_ms,
+                    outcome="pipeline_failure",
+                    budget_scope=None,
+                )
             json_payload = json.loads(response.json())
             headers = {}
             if getattr(request.state, "waf_used_memory", False):
                 headers["X-WAF-Limiter"] = "memory-fallback"
-            latency_ms = (time.monotonic() - start_ts) * 1000
             _log_chat_summary(
                 request=request,
                 request_id=rid,
@@ -722,8 +836,18 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             failure_type=None,
             failure_reason=None,
         )
-        tokens_used = input_tokens + estimate_tokens_from_text(rendered_text)
+        tokens_used = input_tokens + output_tokens_est
         post_accounting(identity, tokens_used)
+        cost_policy.record_success(
+            request_id=rid,
+            actor_key=actor_key,
+            ip_hash=identity.ip_hash,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens_est,
+            latency_ms=(time.monotonic() - start_ts) * 1000,
+            outcome="success",
+            budget_scope=None,
+        )
         json_payload = json.loads(response.json())
         headers = {}
         if getattr(request.state, "waf_used_memory", False):
@@ -769,6 +893,15 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
     except Exception as exc:
         if isinstance(exc, (asyncio.TimeoutError, PerfTimeoutError)):
             latency_ms = (time.monotonic() - start_ts) * 1000
+            cost_policy.record_failure(
+                request_id=rid,
+                actor_key=_actor_key(identity),
+                ip_hash=identity.ip_hash,
+                outcome="timeout_total",
+                latency_ms=latency_ms,
+                is_provider_failure=True,
+                budget_scope="total_timeout",
+            )
             _log_chat_summary(
                 request=request,
                 request_id=rid,

@@ -45,11 +45,17 @@ echo
 if [[ "$MODE_LOWER" == "staging" ]]; then
   echo "---- Import gates"
   python3 -c "import backend.app.main; print('OK backend.app.main import')" 
+  python3 -c "import backend.app.cost.policy; print('OK backend.app.cost import')" 
   python3 -c "import mci_backend.main; print('OK mci_backend.main import')" 
   echo
 
   run_optional "Phase 15 drills (staging subset)" bash "$DRILLS"
   run_optional "Phase 15 certify subset" bash "$CERTIFY"
+  if [[ -x "$SCRIPT_DIR/cost_gate_chat.sh" && -n "${BASE:-}" ]]; then
+    echo "---- Cost gate (staging optional)"
+    MODE=staging BASE="$BASE" bash "$SCRIPT_DIR/cost_gate_chat.sh" || true
+    echo
+  fi
 fi
 
 if [[ "$MODE_LOWER" == "prod" ]]; then

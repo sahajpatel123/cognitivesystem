@@ -18,8 +18,7 @@ run() {
 
 run "Health" curl -i -s "$BASE/health"
 run "DB health" curl -i -s "$BASE/db/health"
-run "Identity (anon cookie)" curl -i -s -c "$COOKIE_JAR" "$BASE/auth/whoami"
-run "Chat happy (\"hi\")" curl -i -s -b "$COOKIE_JAR" -H "Content-Type: application/json" -d '{"user_text":"hi"}' "$BASE/api/chat"
+run "Chat happy (\"hi\")" curl -i -s -b "$COOKIE_JAR" -H "Content-Type: application/json" -d '{"message":"hi"}' "$BASE/api/chat"
 run "Chat wrong content-type (expect 415)" curl -i -s -H "Content-Type: text/plain" -d 'hi' "$BASE/api/chat"
 
 echo "Done. Inspect status codes above. Payload limited to 'hi'; temp cookies stored at $COOKIE_JAR"
