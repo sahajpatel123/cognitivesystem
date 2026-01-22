@@ -8,6 +8,12 @@ from typing import Any, Dict, Union, Optional
 import httpx
 
 from backend.app.config import get_settings
+from backend.app.perf.http_client import get_shared_httpx_client
+from backend.app.perf.budgets import (
+    outbound_http_connect_timeout_s,
+    outbound_http_read_timeout_s,
+    outbound_http_timeout_s,
+)
 from .enforcement import (
     ExpressionAdapterInput,
     ReasoningAdapterInput,
@@ -69,32 +75,36 @@ class LLMClient:
         if self.request_id_value:
             headers[self.request_id_header] = self.request_id_value
 
-        timeout = httpx.Timeout(self.timeout_seconds, connect=self.connect_timeout_seconds)
+        timeout = httpx.Timeout(
+            self.timeout_seconds or outbound_http_timeout_s(),
+            connect=self.connect_timeout_seconds or outbound_http_connect_timeout_s(),
+            read=outbound_http_read_timeout_s(),
+        )
 
-        with httpx.Client(timeout=timeout) as client:
+        client = get_shared_httpx_client()
+        try:
+            resp = client.post(self.api_base, headers=headers, json=payload, timeout=timeout)
+            resp.raise_for_status()
             try:
-                resp = client.post(self.api_base, headers=headers, json=payload)
-                resp.raise_for_status()
-                try:
-                    data = resp.json()
-                except ValueError as exc:
-                    raise build_failure(
-                        violation_class=ViolationClass.STRUCTURAL_VIOLATION,
-                        reason="LLM adapter returned non-JSON response",
-                        detail={"error": str(exc)},
-                    ) from exc
-            except httpx.TimeoutException as exc:
+                data = resp.json()
+            except ValueError as exc:
                 raise build_failure(
-                    violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
-                    reason="LLM adapter HTTP request timeout",
+                    violation_class=ViolationClass.STRUCTURAL_VIOLATION,
+                    reason="LLM adapter returned non-JSON response",
                     detail={"error": str(exc)},
                 ) from exc
-            except httpx.HTTPError as exc:
-                raise build_failure(
-                    violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
-                    reason="LLM adapter HTTP request failed",
-                    detail={"error": str(exc)},
-                ) from exc
+        except httpx.TimeoutException as exc:
+            raise build_failure(
+                violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
+                reason="LLM adapter HTTP request timeout",
+                detail={"error": str(exc)},
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise build_failure(
+                violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
+                reason="LLM adapter HTTP request failed",
+                detail={"error": str(exc)},
+            ) from exc
 
         return data
 

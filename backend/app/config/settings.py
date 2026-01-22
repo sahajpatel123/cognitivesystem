@@ -70,6 +70,16 @@ class Settings(BaseSettings):
     model_circuit_breaker_window_seconds: int = Field(60, alias="MODEL_CIRCUIT_BREAKER_WINDOW_SECONDS")
     model_circuit_breaker_open_seconds: int = Field(120, alias="MODEL_CIRCUIT_BREAKER_OPEN_SECONDS")
 
+    # Performance budgets (Phase 16 Step 2)
+    api_chat_total_timeout_ms: Optional[int] = Field(None, alias="API_CHAT_TOTAL_TIMEOUT_MS")
+    model_call_timeout_ms: Optional[int] = Field(None, alias="MODEL_CALL_TIMEOUT_MS")
+    outbound_http_timeout_s: Optional[float] = Field(None, alias="OUTBOUND_HTTP_TIMEOUT_S")
+    outbound_http_connect_timeout_s: Optional[float] = Field(None, alias="OUTBOUND_HTTP_CONNECT_TIMEOUT_S")
+    outbound_http_read_timeout_s: Optional[float] = Field(None, alias="OUTBOUND_HTTP_READ_TIMEOUT_S")
+    outbound_http_max_connections: Optional[int] = Field(None, alias="OUTBOUND_HTTP_MAX_CONNECTIONS")
+    outbound_http_max_keepalive_connections: Optional[int] = Field(None, alias="OUTBOUND_HTTP_MAX_KEEPALIVE_CONNECTIONS")
+    outbound_http_keepalive_expiry_s: Optional[float] = Field(None, alias="OUTBOUND_HTTP_KEEPALIVE_EXPIRY_S")
+
     # Legacy LLM names (used by pipeline)
     llm_reasoning_model: str = Field("reasoning-model", alias="LLM_REASONING_MODEL")
     llm_expression_model: str = Field("expression-model", alias="LLM_EXPRESSION_MODEL")
