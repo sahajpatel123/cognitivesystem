@@ -47,4 +47,8 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
   run_optional "Phase 15 certify subset" bash "$CERTIFY"
 fi
 
+if [[ "$MODE_LOWER" == "prod" ]]; then
+  echo "Production gate is evidence-only; deployment must occur via release branch promotion (no direct deploys here)."
+fi
+
 echo "Promotion gate completed (mode=$MODE_LOWER). Review outputs above for PASS/FAIL."

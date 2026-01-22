@@ -55,6 +55,7 @@ Locks the scaling and upgrade protocol for Phase 16 to ensure reliability, perfo
 - Rollback triggers: SLO breach thresholds or cost overrun at <fill> percentage beyond targets; any rise in 5xx beyond <fill>% absolute.
 - Rollback procedure: use prior deploy artifact; follow drills in docs/PHASE15_STEP8_RELEASE_DRILLS.md and scripts/release_drills.sh.
 - Post-rollback review: capture cause, evidence, and prevent recurrence before reattempt.
+- Production promotion model (Option B): production advances only by fast-forwarding `release` from staging-tested `main` commits with evidence; no direct prod deploys.
 
 ## Cost & Capacity Guardrails
 - Token/request caps enforced (Step 4), requests/day caps enforced, WAF enforced (Step 5), observability passive (Step 6).
