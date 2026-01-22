@@ -43,6 +43,11 @@ BASE="$BASE" bash "$SMOKE"
 echo
 
 if [[ "$MODE_LOWER" == "staging" ]]; then
+  echo "---- Import gates"
+  python3 -c "import backend.app.main; print('OK backend.app.main import')" 
+  python3 -c "import mci_backend.main; print('OK mci_backend.main import')" 
+  echo
+
   run_optional "Phase 15 drills (staging subset)" bash "$DRILLS"
   run_optional "Phase 15 certify subset" bash "$CERTIFY"
 fi

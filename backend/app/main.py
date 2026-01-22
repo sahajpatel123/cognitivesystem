@@ -28,6 +28,8 @@ from backend.app.chat_contract import (
     FailureType,
     MAX_PAYLOAD_BYTES,
 )
+from backend.app.schemas import ChatRequest, ChatResponse
+from backend.app.service import ConversationService
 from backend.app.config import get_settings, safe_error_detail, settings_public_summary
 from backend.app.config.redaction import redact_secrets
 from backend.app.config.settings import validate_for_env
@@ -46,6 +48,7 @@ from backend.app.perf import (
     outbound_http_timeout_s,
     remaining_budget_ms,
 )
+from backend.app.waf import WAFError, waf_dependency
 
 
 LOGGING_CONFIG = {

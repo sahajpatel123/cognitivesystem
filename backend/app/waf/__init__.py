@@ -1,3 +1,3 @@
-from .guard import waf_dependency
+from .guard import WAFError, waf_dependency
 
-__all__ = ["waf_dependency"]
+__all__ = ["waf_dependency", "WAFError"]

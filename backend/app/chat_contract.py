@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, model_validator
 
@@ -55,3 +55,10 @@ class ChatResponse(BaseModel):
         if self.failure_type is None and (not isinstance(self.rendered_text, str) or not self.rendered_text.strip()):
             raise ValueError("rendered_text required for successful responses")
         return self
+
+
+class ExpressionPlan(BaseModel):
+    steps: List[str] = Field(default_factory=list)
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
