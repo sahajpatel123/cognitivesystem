@@ -7,15 +7,19 @@ from typing import Any, Dict, List, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backend.app.config.guards import enforce_env_safety
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", protected_namespaces=("settings_",), case_sensitive=False)
 
     # App / env
-    app_env: str = Field("dev", alias="APP_ENV")
+    app_env: str = Field("local", alias="APP_ENV")
     debug_errors: int = Field(0, alias="DEBUG_ERRORS")
     log_level: str = Field("INFO", alias="LOG_LEVEL")
     request_id_header: str = Field("x-request-id", alias="REQUEST_ID_HEADER")
+    db_host_allowlist_staging: Optional[str] = Field(None, alias="DB_HOST_ALLOWLIST_STAGING")
+    db_host_allowlist_prod: Optional[str] = Field(None, alias="DB_HOST_ALLOWLIST_PROD")
 
     # Legacy / compatibility
     backend_public_base_url: Optional[str] = Field(None, alias="BACKEND_PUBLIC_BASE_URL")
@@ -91,7 +95,11 @@ class Settings(BaseSettings):
     @field_validator("app_env")
     @classmethod
     def normalize_env(cls, v: str) -> str:
-        val = (v or "dev").lower()
+        val = (v or "local").lower()
+        if val == "dev":
+            return "local"
+        if val == "prod":
+            return "production"
         return val
 
     def validated_caps(self) -> Dict[str, int]:
@@ -147,13 +155,15 @@ class Settings(BaseSettings):
 
 @functools.lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    enforce_env_safety(settings)
+    return settings
 
 
 def validate_for_env(settings: Settings) -> Dict[str, Any]:
     issues: list[str] = []
     caps = settings.validated_caps()
-    if settings.app_env == "prod":
+    if settings.app_env == "production":
         if settings.debug_errors != 0:
             issues.append("DEBUG_ERRORS must be 0 in prod")
         if settings.model_calls_enabled not in (0, 1):
