@@ -85,3 +85,31 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
     - revert to defaults after drill
   notes: "No identity endpoint used in smoke; matches OpenAPI contract."
 ```
+
+## Step 4 Evidence (Model Routing Policy + request_id/whoami hotfix)
+```
+- date: 2026-01-23
+  type: step16.4_routing_policy
+  staging_base: https://cognitivesystem-staging.up.railway.app
+  prod_base: https://cognitivesystem-production.up.railway.app
+  summary: "Fixed module-call crash on /api/chat by importing callable get_request_id; whoami returns 200; deterministic routing policy enforced."
+  commands_local:
+    - python3 -m compileall backend mci_backend
+    - python3 -c "import backend.app.main; print('OK backend.app.main import')"
+    - python3 -c "from backend.app.observability.request_id import get_request_id; print('callable=', callable(get_request_id), 'type=', type(get_request_id))"
+    - bash -n scripts/smoke_api_chat.sh scripts/promotion_gate.sh scripts/cost_gate_chat.sh
+  commands_staging:
+    - curl -s -i -H "Content-Type: application/json" -d '{"user_text":"hi"}' $STAGING_BASE/api/chat  # expect 200 governed JSON
+    - curl -s -i $STAGING_BASE/auth/whoami  # expect 200 JSON
+    - MODE=staging BASE=$STAGING_BASE ./scripts/promotion_gate.sh
+    - curl -s -i -H "Content-Type: application/json" -H "X-Mode: THINKING" -d '{"user_text":"hi","mode":"thinking"}' $STAGING_BASE/api/chat  # expect 200, deterministic downgrade if tier disallows
+  commands_prod:
+    - curl -s -i -H "Content-Type: application/json" -d '{"user_text":"hi"}' $PROD_BASE/api/chat  # expect 200 governed JSON
+    - curl -s -i $PROD_BASE/auth/whoami  # expect 200 JSON
+  expected_outcomes:
+    - /api/chat with {"user_text":"hi"} -> 200
+    - /auth/whoami -> 200
+    - routing logs include "routing decision" with tier/requested_mode/effective_mode/primary_model_class
+    - no "'module' object is not callable" errors
+  notes: "Policy module remains pure; no provider imports; deterministic downgrades; no user_text logging."
+```

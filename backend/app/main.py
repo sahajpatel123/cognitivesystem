@@ -31,7 +31,7 @@ from backend.app.chat_contract import (
 )
 from backend.app.cost import get_cost_policy
 from backend.mci_backend.governed_response_runtime import render_governed_response
-from backend.mci_backend.model_contract import ModelInvocationResult
+from backend.mci_backend.model_contract import ModelFailureType, ModelInvocationResult
 from backend.app.schemas import ChatRequest, ChatResponse
 from backend.app.service import ConversationService
 from backend.app.config import get_settings, safe_error_detail, settings_public_summary
@@ -54,6 +54,13 @@ from backend.app.perf import (
     remaining_budget_ms,
 )
 from backend.app.waf import WAFError, waf_dependency
+from backend.app.models.policy import (
+    RequestedMode,
+    RoutingContext,
+    Tier,
+    ModelRoutePlan,
+    decide_route,
+)
 
 
 LOGGING_CONFIG = {
@@ -176,7 +183,13 @@ def _request_id(request: Request) -> str:
             return existing.strip()
     except Exception:
         pass
-    rid = get_request_id(request)
+    try:
+        rid = get_request_id(request)
+    except Exception as exc:
+        logger.info("[API] request_id fallback", extra={"error": str(exc)})
+        import uuid
+
+        rid = str(uuid.uuid4())
     try:
         request.state.request_id = rid
     except Exception:
@@ -241,7 +254,63 @@ def _actor_key(identity: IdentityContext) -> str:
         return f"user:{identity.user_id}"
     if identity.anon_id:
         return f"anon:{identity.anon_id}"
-    return f"subject:{identity.subject_id}"
+    return f"ip:{identity.ip_hash}"
+
+
+def _requested_mode(request: Request, payload: dict | None) -> RequestedMode:
+    # Optional JSON field "mode" or header "X-Mode"; defaults to DEFAULT
+    header_mode = request.headers.get("X-Mode") if hasattr(request, "headers") else None
+    candidate = None
+    if isinstance(payload, dict):
+        candidate = payload.get("mode") or header_mode
+    else:
+        candidate = header_mode
+    if isinstance(candidate, str):
+        lowered = candidate.lower().strip()
+        if lowered in RequestedMode._value2member_map_:
+            return RequestedMode(lowered)
+    return RequestedMode.DEFAULT
+
+
+def _tier_from_plan(plan: Plan) -> Tier:
+    if plan == Plan.PRO:
+        return Tier.PRO
+    if plan == Plan.MAX:
+        return Tier.MAX
+    return Tier.FREE
+
+
+async def _invoke_with_route_plan(user_text: str, route_plan: ModelRoutePlan, timeout_ms: int) -> ModelInvocationResult:
+    last_result: ModelInvocationResult | None = None
+    for route in route_plan.routes:
+        try:
+            result = await enforce_timeout(
+                lambda: asyncio.to_thread(render_governed_response, user_text),
+                timeout_ms,
+            )
+        except Exception as exc:
+            if isinstance(exc, (asyncio.TimeoutError, PerfTimeoutError)):
+                failure = type(
+                    "Failure",
+                    (),
+                    {"failure_type": ModelFailureType.TIMEOUT, "reason_code": "TIMEOUT", "message": "timeout"},
+                )()
+                result = ModelInvocationResult(
+                    request_id="",
+                    ok=False,
+                    output_text=None,
+                    output_json=None,
+                    failure=failure,  # type: ignore[arg-type]
+                )
+            else:
+                raise
+        last_result = result
+        if result.ok:
+            return result
+        if result.failure and result.failure.failure_type in (ModelFailureType.TIMEOUT, ModelFailureType.PROVIDER_ERROR):
+            continue
+        return result
+    return last_result  # type: ignore[return-value]
 
 
 def _log_chat_summary(
@@ -324,8 +393,7 @@ async def db_health() -> Dict[str, str] | JSONResponse:
 
 
 @app.get("/auth/whoami")
-async def whoami(request: Request, response: Response) -> Dict[str, Any]:
-    identity: IdentityContext = await identity_dependency(request, response)
+async def whoami(identity: IdentityContext = Depends(identity_dependency)) -> Dict[str, Any]:
     return {
         "authenticated": identity.is_authenticated,
         "subject_type": identity.subject_type,
@@ -618,6 +686,46 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             )
             return JSONResponse(status_code=status_code, content=json.loads(payload.json()), headers=headers)
 
+        # Routing policy (Step 4)
+        requested_mode = _requested_mode(request, payload)
+        tier = _tier_from_plan(plan)
+        route_ctx = RoutingContext(
+            tier=tier,
+            requested_mode=requested_mode,
+            breaker_open=False,
+            budget_tight=False,
+            est_input_tokens=input_tokens,
+        )
+        route_plan = decide_route(route_ctx)
+        logger.info(
+            "[API] routing decision",
+            extra={
+                "request_id": rid,
+                "tier": route_plan.tier.value,
+                "requested_mode": route_plan.requested_mode.value,
+                "effective_mode": route_plan.effective_mode.value,
+                "primary_model_class": route_plan.primary.model_class.value,
+                "fallback_count": len(route_plan.fallbacks),
+            },
+        )
+        try:
+            request.state.plan_meta = {
+                "decision": "allow",
+                "error_code": None,
+                "plan": plan.value,
+                "route_plan": {
+                    "tier": route_plan.tier.value,
+                    "requested_mode": route_plan.requested_mode.value,
+                    "effective_mode": route_plan.effective_mode.value,
+                    "model_class": route_plan.primary.model_class.value,
+                    "fallbacks": [
+                        {"mode": fb.effective_mode.value, "model_class": fb.model_class.value} for fb in route_plan.fallbacks
+                    ],
+                },
+            }
+        except Exception:
+            pass
+
         model_timeout_ms_value = model_call_timeout_ms()
         budget_remaining_before_model = remaining_budget_ms(start_ts, budget_ms_total)
         effective_model_timeout_ms = max(1000, min(model_timeout_ms_value, budget_remaining_before_model))
@@ -661,10 +769,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             )
 
         try:
-            result = await enforce_timeout(
-                lambda: asyncio.to_thread(render_governed_response, chat_request.user_text),
-                effective_model_timeout_ms,
-            )
+            result = await _invoke_with_route_plan(chat_request.user_text, route_plan, effective_model_timeout_ms)
         except Exception as exc:
             timeout_where = "model" if isinstance(exc, (asyncio.TimeoutError, PerfTimeoutError)) else timeout_where
             if isinstance(exc, (asyncio.TimeoutError, PerfTimeoutError)):

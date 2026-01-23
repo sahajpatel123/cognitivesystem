@@ -47,6 +47,7 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
   python3 -c "import backend.app.main; print('OK backend.app.main import')" 
   python3 -c "import backend.app.cost.policy; print('OK backend.app.cost import')" 
   python3 -c "import mci_backend.main; print('OK mci_backend.main import')" 
+  python3 -c "from backend.app.observability.request_id import get_request_id; import inspect; print('get_request_id_callable=', callable(get_request_id))"
   echo
 
   run_optional "Phase 15 drills (staging subset)" bash "$DRILLS"
