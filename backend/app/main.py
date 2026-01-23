@@ -19,7 +19,8 @@ from pydantic import ValidationError
 from starlette.middleware.cors import ALL_METHODS
 from starlette.status import HTTP_302_FOUND
 
-from backend.app.auth.identity import ANON_COOKIE_NAME, IdentityContext, identity_dependency
+from backend.app.auth.identity import ANON_COOKIE_NAME, IdentityContext
+from backend.app.deps.identity import identity_dependency
 from backend.app.chat_contract import (
     ChatAction,
     ChatRequest as ContractChatRequest,
@@ -39,7 +40,8 @@ from backend.app.config.settings import validate_for_env
 from backend.app.db import check_db_connection
 from backend.app.deps.plan_guard import post_accounting, precheck_plan_and_quotas
 from backend.app.llm_client import LLMClient
-from backend.app.observability import hash_subject, record_invocation, request_id as get_request_id, structured_log
+from backend.app.observability import hash_subject, record_invocation, structured_log
+from backend.app.observability.request_id import get_request_id
 from backend.app.observability.logging import safe_redact
 from backend.app.plans.policy import Plan
 from backend.app.plans.tokens import clamp_text_to_token_limit, estimate_tokens_from_text
@@ -322,7 +324,8 @@ async def db_health() -> Dict[str, str] | JSONResponse:
 
 
 @app.get("/auth/whoami")
-async def whoami(identity: IdentityContext = Depends(identity_dependency)) -> Dict[str, Any]:
+async def whoami(request: Request, response: Response) -> Dict[str, Any]:
+    identity: IdentityContext = await identity_dependency(request, response)
     return {
         "authenticated": identity.is_authenticated,
         "subject_type": identity.subject_type,

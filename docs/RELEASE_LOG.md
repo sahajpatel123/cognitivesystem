@@ -76,7 +76,8 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
   expected_outcomes:
     - /health -> 200
     - /db/health -> 200
-    - /api/chat (json {"message":"hi"}) -> 200 with governed response
+    - /api/chat (json {"user_text":"hi"}) -> 200 with governed response
+    - /auth/whoami -> 200 JSON (no 422; accepts Request/Response injection)
     - /api/chat (text/plain) -> 415
     - cost gate with lowered limits -> 429 FailureType.BUDGET_EXCEEDED
   env_toggles_for_cost_drill:
