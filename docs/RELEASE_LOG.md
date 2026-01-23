@@ -92,7 +92,7 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
   type: step16.4_routing_policy
   staging_base: https://cognitivesystem-staging.up.railway.app
   prod_base: https://cognitivesystem-production.up.railway.app
-  summary: "Fixed module-call crash on /api/chat by importing callable get_request_id; whoami returns 200; deterministic routing policy enforced."
+  summary: "Fixed module-call crash on /api/chat by importing callable get_request_id; whoami returns 200; deterministic routing policy enforced; patched datetime NameError in chat logging."
   commands_local:
     - python3 -m compileall backend mci_backend
     - python3 -c "import backend.app.main; print('OK backend.app.main import')"
