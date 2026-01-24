@@ -49,6 +49,10 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
   python3 -c "import mci_backend.main; print('OK mci_backend.main import')" 
   python3 -c "from backend.app.observability.request_id import get_request_id; import inspect; print('get_request_id_callable=', callable(get_request_id))"
   python3 -c "import backend.app.main as m; print('datetime_in_main=', hasattr(m, 'datetime'))"
+  bash -n "$SCRIPT_DIR/chaos_gate.sh"
+  python3 -c "import backend.app.reliability.engine as e; print('step5_engine_ok=', hasattr(e,'run_step5'))"
+  python3 -c "import backend.app.quality.gate as q; print('step5_quality_ok=', hasattr(q,'evaluate_quality'))"
+  python3 -c "import backend.app.safety.envelope as s; print('step5_safety_ok=', hasattr(s,'apply_safety'))"
   echo
 
   run_optional "Phase 15 drills (staging subset)" bash "$DRILLS"

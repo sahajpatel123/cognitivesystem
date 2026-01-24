@@ -113,3 +113,26 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
     - no "'module' object is not callable" errors
   notes: "Policy module remains pure; no provider imports; deterministic downgrades; no user_text logging."
 ```
+
+## Step 5 Evidence (Reliability + Quality + Safety)
+```
+- date: 2026-01-24
+  type: step16.5_reliability_quality_safety
+  staging_base: https://cognitivesystem-staging.up.railway.app
+  summary: "Deterministic Step 5 wrapper added: breaker/budget short-circuit, deadlines, quality gate, safety envelope, chaos flags, observability."
+  commands_local:
+    - python3 -m compileall backend mci_backend
+    - python3 -c "import backend.app.main; print('OK backend.app.main import')"
+    - pytest -q backend/tests/test_step5_determinism.py backend/tests/test_step5_quality_gate.py backend/tests/test_step5_safety_envelope.py backend/tests/test_step5_timeouts.py
+    - bash -n scripts/smoke_api_chat.sh scripts/promotion_gate.sh scripts/cost_gate_chat.sh scripts/chaos_gate.sh
+  commands_staging:
+    - MODE=staging BASE=$STAGING_BASE ./scripts/promotion_gate.sh
+    - BASE=$STAGING_BASE ./scripts/chaos_gate.sh
+  expected_outcomes:
+    - breaker/budget chaos flags return FALLBACK with corresponding failure_type
+    - provider timeout chaos flag returns TIMEOUT with timeout_where=provider
+    - quality fail chaos flag returns ASK_CLARIFY with clarifying prompt
+    - safety block chaos flag returns SAFETY_BLOCKED refusal
+    - /api/chat contract preserved; no user_text logging; routing decision logs intact
+  notes: "Step 5 deterministic, bounded, chaos-ready; integrates with Step 4 policy without schema changes."
+```

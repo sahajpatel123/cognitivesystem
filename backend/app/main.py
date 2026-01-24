@@ -64,16 +64,13 @@ from backend.app.models.policy import (
     decide_route,
 )
 from backend.app.reliability import (
-    Action as ReliabilityAction,
     FailureInfo,
     FailureType as ReliabilityFailureType,
     to_public_error,
     evaluate_breaker,
     force_budget_blocked,
 )
-from backend.app.reliability.engine import Step5Context, Step5Result, run_step5
-from backend.app.quality.gate import clarifying_prompt
-from backend.app.safety.envelope import refusal_text
+from backend.app.reliability.engine import Step5Context, run_step5
 
 
 LOGGING_CONFIG = {
@@ -786,54 +783,6 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 action=ChatAction.FALLBACK,
             )
 
-        if forced_breaker or forced_budget:
-            latency_ms = (time.monotonic() - start_ts) * 1000
-            failure = FailureInfo(
-                failure_type=ReliabilityFailureType.BUDGET_EXCEEDED if forced_budget else ReliabilityFailureType.CIRCUIT_OPEN,
-                reason="forced_budget_block" if forced_budget else "forced_breaker_open",
-                action=ReliabilityAction.BLOCK,
-                status_code=429 if forced_budget else 503,
-            )
-            cost_policy.record_failure(
-                request_id=rid,
-                actor_key=actor_key,
-                ip_hash=identity.ip_hash,
-                outcome="budget_forced" if forced_budget else "breaker_forced",
-                latency_ms=latency_ms,
-                is_provider_failure=False,
-                budget_scope="forced_budget" if forced_budget else "breaker",
-            )
-            action, ft, reason = to_public_error(failure)
-            response = ContractChatResponse(
-                action=action,
-                rendered_text="Cost protection is active. Please try again later." if forced_budget else "Service temporarily unavailable.",
-                failure_type=ft,
-                failure_reason=reason,
-            )
-            json_payload = json.loads(response.json())
-            headers = {}
-            if getattr(request.state, "waf_used_memory", False):
-                headers["X-WAF-Limiter"] = "memory-fallback"
-            _log_chat_summary(
-                request=request,
-                request_id=rid,
-                status_code=failure.status_code,
-                latency_ms=latency_ms,
-                plan_value=plan.value,
-                subject_type=identity.subject_type,
-                subject_id=identity.subject_id,
-                input_tokens=input_tokens,
-                output_tokens_est=limits.max_output_tokens,
-                error_code=failure.failure_type.value,
-                waf_limiter=waf_limiter,
-                budget_ms_total=budget_ms_total,
-                budget_ms_remaining_at_model_start=None,
-                timeout_where=None,
-                model_timeout_ms=None,
-                http_timeout_ms=http_timeout_ms,
-            )
-            return JSONResponse(status_code=failure.status_code, content=json_payload, headers=headers)
-
         async def _invoke_attempt(attempt_idx: int) -> str:
             result = await asyncio.to_thread(render_governed_response, chat_request.user_text)
             if not result.ok:
@@ -850,7 +799,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             plan_value=plan.value,
             breaker_open=forced_breaker,
             budget_blocked=forced_budget,
-            total_timeout_ms=budget_ms_total,
+            total_timeout_ms=budget_remaining_before_model,
             per_attempt_timeout_ms=effective_model_timeout_ms,
             max_attempts=2,
             mode_requested=requested_mode.value if requested_mode else None,
