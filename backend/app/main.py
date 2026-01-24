@@ -67,16 +67,13 @@ from backend.app.reliability import (
     Action as ReliabilityAction,
     FailureInfo,
     FailureType as ReliabilityFailureType,
-    Deadline,
-    clamp_attempt_timeout_ms,
+    to_public_error,
     evaluate_breaker,
     force_budget_blocked,
-    force_provider_timeout,
-    to_public_error,
 )
-from backend.app.reliability.engine import run_step5
-from backend.app.quality.gate import evaluate_quality
-from backend.app.safety.envelope import enforce_safety
+from backend.app.reliability.engine import Step5Context, Step5Result, run_step5
+from backend.app.quality.gate import clarifying_prompt
+from backend.app.safety.envelope import refusal_text
 
 
 LOGGING_CONFIG = {
@@ -837,133 +834,131 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             )
             return JSONResponse(status_code=failure.status_code, content=json_payload, headers=headers)
 
-        async def _invoke_model(route: ModelRoute, timeout_ms: int) -> ModelInvocationResult:
-            return await asyncio.to_thread(render_governed_response, chat_request.user_text)
+        async def _invoke_attempt(attempt_idx: int) -> str:
+            result = await asyncio.to_thread(render_governed_response, chat_request.user_text)
+            if not result.ok:
+                raise RuntimeError("provider_failure")
+            output_text = result.output_text or ""
+            if not output_text and result.output_json and isinstance(result.output_json, dict):
+                maybe_text = result.output_json.get("message") or result.output_json.get("text")
+                if isinstance(maybe_text, str):
+                    output_text = maybe_text
+            return output_text
 
-        step5_result = await run_step5(
-            user_text=chat_request.user_text,
-            route_plan=route_plan,
-            invoke_model=_invoke_model,
-            deadline_ms=budget_ms_total,
+        step5_ctx = Step5Context(
+            request_id=rid,
+            plan_value=plan.value,
+            breaker_open=forced_breaker,
+            budget_blocked=forced_budget,
+            total_timeout_ms=budget_ms_total,
             per_attempt_timeout_ms=effective_model_timeout_ms,
             max_attempts=2,
-            force_budget_block=forced_budget,
-            force_timeout=force_provider_timeout(),
+            mode_requested=requested_mode.value if requested_mode else None,
+            mode_effective=route_plan.effective_mode.value,
+            model_class_effective=route_plan.primary.model_class.value,
         )
+
+        step5_result = await run_step5(step5_ctx, _invoke_attempt)
 
         output_tokens_est = estimate_tokens_from_text(step5_result.rendered_text)
         tokens_used = (input_tokens or 0) + (output_tokens_est or 0)
+        latency_ms = int((time.monotonic() - start_ts) * 1000)
+
+        provider_failure_types = {
+            FailureType.PROVIDER_TIMEOUT,
+            FailureType.PROVIDER_RATE_LIMIT,
+            FailureType.PROVIDER_AUTH_ERROR,
+            FailureType.PROVIDER_BAD_RESPONSE,
+            FailureType.PROVIDER_UNAVAILABLE,
+        }
+        is_provider_failure = step5_result.failure_type in provider_failure_types
+
+        status_code = 200
+        if step5_result.failure_type == FailureType.BUDGET_EXCEEDED:
+            status_code = 429
+        elif step5_result.failure_type == FailureType.PROVIDER_UNAVAILABLE:
+            status_code = 503
+
+        headers = {}
+        if getattr(request.state, "waf_used_memory", False):
+            headers["X-WAF-Limiter"] = "memory-fallback"
 
         if step5_result.failure_type:
             post_accounting(identity, tokens_used)
-            outcome = "provider_failure" if step5_result.provider_failure else "step5_failure"
+            outcome = "provider_failure" if is_provider_failure else "step5_failure"
             cost_policy.record_failure(
                 request_id=rid,
                 actor_key=actor_key,
                 ip_hash=identity.ip_hash,
                 outcome=outcome,
-                latency_ms=step5_result.latency_ms,
-                is_provider_failure=step5_result.provider_failure,
+                latency_ms=latency_ms,
+                is_provider_failure=is_provider_failure,
                 budget_scope=None,
             )
             response = ContractChatResponse(
                 action=step5_result.action,
-                rendered_text=step5_result.rendered_text,
+                rendered_text=step5_result.rendered_text or "Governed response unavailable.",
                 failure_type=step5_result.failure_type,
                 failure_reason=step5_result.failure_reason,
             )
-            json_payload = json.loads(response.json())
-            headers = {}
-            if getattr(request.state, "waf_used_memory", False):
-                headers["X-WAF-Limiter"] = "memory-fallback"
-            _log_chat_summary(
-                request=request,
+        else:
+            post_accounting(identity, tokens_used)
+            cost_policy.record_success(
                 request_id=rid,
-                status_code=200,
-                latency_ms=step5_result.latency_ms,
-                plan_value=plan.value,
-                subject_type=identity.subject_type,
-                subject_id=identity.subject_id,
+                actor_key=actor_key,
+                ip_hash=identity.ip_hash,
                 input_tokens=input_tokens,
-                output_tokens_est=limits.max_output_tokens,
-                error_code=step5_result.failure_type.value if step5_result.failure_type else None,
-                waf_limiter=waf_limiter,
-                budget_ms_total=budget_ms_total,
-                budget_ms_remaining_at_model_start=budget_remaining_before_model,
-                timeout_where=timeout_where,
-                model_timeout_ms=effective_model_timeout_ms,
-                http_timeout_ms=http_timeout_ms,
+                output_tokens=output_tokens_est,
+                latency_ms=latency_ms,
+                outcome="step5_success",
+                budget_scope=None,
             )
-            logger.info(
-                "[API] step5.result",
-                extra={
-                    "request_id": rid,
-                    "action": step5_result.action.value,
-                    "failure_type": step5_result.failure_type.value if step5_result.failure_type else None,
-                    "failure_reason": step5_result.failure_reason,
-                    "attempts": step5_result.attempts,
-                    "route_class": step5_result.route_class,
-                    "effective_mode": step5_result.effective_mode,
-                    "quality_reason": step5_result.quality_reason,
-                    "breaker_open": forced_breaker,
-                    "budget_flag": forced_budget,
-                },
+            response = ContractChatResponse(
+                action=step5_result.action,
+                rendered_text=step5_result.rendered_text if step5_result.rendered_text.strip() else "Governed response unavailable.",
+                failure_type=None,
+                failure_reason=None,
             )
-            return JSONResponse(status_code=200, content=json_payload, headers=headers)
 
-        post_accounting(identity, tokens_used)
-        cost_policy.record_success(
-            request_id=rid,
-            actor_key=actor_key,
-            ip_hash=identity.ip_hash,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens_est,
-            latency_ms=step5_result.latency_ms,
-            outcome="step5_success",
-            budget_scope=None,
-        )
-        response = ContractChatResponse(
-            action=step5_result.action,
-            rendered_text=step5_result.rendered_text if step5_result.rendered_text.strip() else "Governed response unavailable.",
-            failure_type=None,
-            failure_reason=None,
-        )
         json_payload = json.loads(response.json())
-        headers = {}
-        if getattr(request.state, "waf_used_memory", False):
-            headers["X-WAF-Limiter"] = "memory-fallback"
         _log_chat_summary(
             request=request,
             request_id=rid,
-            status_code=200,
-            latency_ms=step5_result.latency_ms,
+            status_code=status_code,
+            latency_ms=latency_ms,
             plan_value=plan.value,
             subject_type=identity.subject_type,
             subject_id=identity.subject_id,
             input_tokens=input_tokens,
             output_tokens_est=limits.max_output_tokens,
-            error_code=None,
+            error_code=step5_result.failure_type.value if step5_result.failure_type else None,
             waf_limiter=waf_limiter,
             budget_ms_total=budget_ms_total,
             budget_ms_remaining_at_model_start=budget_remaining_before_model,
-            timeout_where=timeout_where,
+            timeout_where=step5_result.timeout_where,
             model_timeout_ms=effective_model_timeout_ms,
             http_timeout_ms=http_timeout_ms,
         )
         logger.info(
-            "[API] step5.success",
+            "[API] step5.summary",
             extra={
                 "request_id": rid,
-                "action": step5_result.action.value,
+                "status_code": status_code,
+                "action": response.action.value,
+                "failure_type": response.failure_type.value if response.failure_type else None,
+                "failure_reason": response.failure_reason[:200] if response.failure_reason else None,
+                "plan_value": plan.value,
+                "mode_requested": requested_mode.value if requested_mode else None,
+                "mode_effective": route_plan.effective_mode.value,
+                "model_class_effective": route_plan.primary.model_class.value,
                 "attempts": step5_result.attempts,
-                "route_class": step5_result.route_class,
-                "effective_mode": step5_result.effective_mode,
                 "breaker_open": forced_breaker,
-                "budget_flag": forced_budget,
-                "latency_ms": step5_result.latency_ms,
+                "budget_blocked": forced_budget,
+                "timeout_where": step5_result.timeout_where,
+                "latency_ms": latency_ms,
             },
         )
-        return JSONResponse(status_code=200, content=json_payload, headers=headers)
+        return JSONResponse(status_code=status_code, content=json_payload, headers=headers)
 
     try:
         return await enforce_timeout(_process, budget_ms_total)
