@@ -47,6 +47,7 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
   python3 -c "import backend.app.main; print('OK backend.app.main import')" 
   python3 -c "import backend.app.main as m; print('step6_header_ok=', hasattr(m, '_with_request_id'))"
   python3 -c "import backend.app.main as m; print('step6_chat_summary_ok=', callable(getattr(m, '_emit_chat_summary', None)))"
+  python3 -c "from backend.app.security.entitlements import decide_entitlements, EntitlementsContext; print('step7_entitlements_ok=', callable(decide_entitlements) and (EntitlementsContext is not None))"
   python3 -c "import backend.app.cost.policy; print('OK backend.app.cost import')" 
   python3 -c "import mci_backend.main; print('OK mci_backend.main import')" 
   python3 -c "from backend.app.observability.request_id import get_request_id; import inspect; print('get_request_id_callable=', callable(get_request_id))"
