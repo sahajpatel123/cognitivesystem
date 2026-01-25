@@ -136,3 +136,44 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
     - /api/chat contract preserved; no user_text logging; routing decision logs intact
   notes: "Step 5 deterministic, bounded, chaos-ready; integrates with Step 4 policy without schema changes."
 ```
+
+## Step 6 Evidence (Pass 1: Passive Observability)
+```
+- date: 2026-01-25
+  type: step16.6_passive_observability
+  staging_base: https://cognitivesystem-staging.up.railway.app
+  summary: "Added X-Request-Id header propagation and passive chat.summary sampling (2%) without behavior changes."
+  commands_local:
+    - python3 -m compileall backend mci_backend
+    - python3 -c "import backend.app.main; print('OK backend.app.main import')"
+    - bash -n scripts/promotion_gate.sh
+  commands_staging:
+    - curl -s -D - -o /dev/null -H "Content-Type: application/json" -d '{"user_text":"hi"}' "$STAGING_BASE/api/chat" | sed -n '1,20p'
+  expected_outcomes:
+    - /api/chat responses include X-Request-Id header on success and error
+    - chat.summary structured event fields contain only safe metadata; sampling deterministic; no user_text
+  notes: "Pass 1 only; no behavior changes to routing/quality/safety."
+```
+
+## Step 6 Evidence (Pass 2: Observability + Offline Eval Gates)
+```
+- date: 2026-01-25
+  type: step16.6_observability_eval_gate
+  staging_base: https://cognitivesystem-staging.up.railway.app
+  summary: "chat.summary contract finalized with deterministic sampling; X-Request-Id on all /api/chat responses; offline eval gate and dashboard spec documented."
+  commands_local:
+    - python3 -m compileall backend mci_backend
+    - python3 -c "import backend.app.main; print('OK backend.app.main import')"
+    - pytest -q backend/tests/test_step6_observability_contract.py backend/tests/test_step6_eval_gate_scenarios.py
+    - bash -n scripts/promotion_gate.sh scripts/eval_gate.sh
+  commands_staging:
+    - curl -s -D - -o /dev/null -H "Content-Type: application/json" -d '{"user_text":"hi"}' "$STAGING_BASE/api/chat" | sed -n '1,20p'
+    - MODE=staging BASE="$STAGING_BASE" ./scripts/promotion_gate.sh
+    - ./scripts/eval_gate.sh
+  expected_outcomes:
+    - /api/chat headers include X-Request-Id on success and error
+    - chat.summary contains only safe metadata; sampling deterministic (2% success, always on errors)
+    - eval_gate.sh passes offline without network
+    - dashboard spec available in docs/DASHBOARD_SPEC.md
+  notes: "Passive only; no changes to routing/quality/safety; logs remain content-free (no user_text/rendered_text)."
+```

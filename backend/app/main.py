@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import time
+import hashlib
 from logging.config import dictConfig
 from typing import Any, Dict
 
@@ -176,6 +177,7 @@ def _failure_response(
     failure_type: FailureType,
     reason: str,
     action: ChatAction = ChatAction.REFUSE,
+    request_id: str | None = None,
 ) -> JSONResponse:
     payload = ContractChatResponse(
         action=action,
@@ -183,7 +185,40 @@ def _failure_response(
         failure_type=failure_type,
         failure_reason=reason[:200],
     )
-    return JSONResponse(status_code=status_code, content=json.loads(payload.json()))
+    resp = JSONResponse(status_code=status_code, content=json.loads(payload.json()))
+    if request_id:
+        resp.headers["X-Request-Id"] = request_id
+    return resp
+
+
+def _with_request_id(response: JSONResponse, request_id: str) -> JSONResponse:
+    response.headers.setdefault("X-Request-Id", request_id)
+    return response
+
+
+def _should_sample(request_id: str, rate: float) -> bool:
+    clamped = max(0.0, min(1.0, float(rate)))
+    if clamped <= 0:
+        return False
+    if clamped >= 1:
+        return True
+    h = hashlib.sha256(request_id.encode("utf-8")).digest()
+    val = int.from_bytes(h, "big") / float(1 << 256)
+    return val < clamped
+
+
+def _emit_chat_summary(fields: dict) -> None:
+    try:
+        safe_fields = safe_redact(fields)
+    except Exception:
+        safe_fields = fields
+    try:
+        structured_log({"event": "chat.summary", **safe_fields})
+    except Exception:
+        try:
+            logger.info(json.dumps({"event": "chat.summary", **safe_fields}, separators=(",", ":")))
+        except Exception:
+            return
 
 
 def _request_id(request: Request) -> str:
@@ -341,6 +376,16 @@ def _log_chat_summary(
     timeout_where: str | None = None,
     model_timeout_ms: int | None = None,
     http_timeout_ms: int | None = None,
+    action: str | None = None,
+    failure_type: str | None = None,
+    failure_reason: str | None = None,
+    requested_mode: str | None = None,
+    granted_mode: str | None = None,
+    model_class: str | None = None,
+    breaker_open: bool | None = None,
+    budget_block: bool | None = None,
+    ip_hash: str | None = None,
+    budget_scope: str | None = None,
 ) -> None:
     waf_info = _waf_meta(request)
     plan_info = _plan_meta(request)
@@ -382,6 +427,41 @@ def _log_chat_summary(
     )
     event["invocation_log_written"] = invocation_written
     structured_log(event)
+
+    effective_action = action or "unknown"
+    effective_failure_type = failure_type or None
+    sampled = True if (status_code >= 400 or failure_type is not None) else _should_sample(request_id, 0.02)
+    summary_fields = {
+        "request_id": request_id,
+        "endpoint": "/api/chat",
+        "event": "chat.summary",
+        "timestamp_utc": datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat(),
+        "status_code": int(status_code),
+        "latency_ms": int(latency_ms),
+        "plan": plan_value,
+        "requested_mode": requested_mode or "none",
+        "granted_mode": granted_mode or "unknown",
+        "model_class": model_class or "unknown",
+        "action": effective_action,
+        "failure_type": effective_failure_type,
+        "failure_reason": (failure_reason[:200] if failure_reason else None),
+        "input_tokens_est": input_tokens,
+        "output_tokens_cap": output_tokens_est,
+        "breaker_open": bool(breaker_open) if breaker_open is not None else False,
+        "budget_block": bool(budget_block) if budget_block is not None else False,
+        "budget_scope": budget_scope,
+        "timeout_where": timeout_where,
+        "http_timeout_ms": http_timeout_ms,
+        "waf_limiter": waf_limiter,
+        "subject_type": subject_type,
+        "subject_id_hash": hashed,
+        "ip_hash": ip_hash,
+        "sampled": sampled,
+        "version": APP_VERSION,
+    }
+
+    if sampled:
+        _emit_chat_summary(summary_fields)
 
 
 @app.get("/health")
@@ -520,9 +600,12 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                     timeout_where=None,
                     http_timeout_ms=http_timeout_ms,
                 )
-                return JSONResponse(
-                    status_code=400,
-                    content={"ok": False, "error_code": "json_invalid", "message": "Request body must be valid JSON."},
+                return _with_request_id(
+                    JSONResponse(
+                        status_code=400,
+                        content={"ok": False, "error_code": "json_invalid", "message": "Request body must be valid JSON."},
+                    ),
+                    rid,
                 )
 
         user_text = payload.get("user_text") if isinstance(payload, dict) else None
@@ -555,37 +638,14 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 budget_ms_total=budget_ms_total,
                 timeout_where=None,
                 http_timeout_ms=http_timeout_ms,
+                budget_scope=None,
             )
-            return JSONResponse(
-                status_code=400,
-                content={"ok": False, "error_code": "user_text_missing", "message": "user_text is required"},
-            )
-
-        try:
-            chat_request = ContractChatRequest(**{"user_text": user_text})
-        except ValidationError:
-            latency_ms = (time.monotonic() - start_ts) * 1000
-            _log_chat_summary(
-                request=request,
-                request_id=rid,
-                status_code=400,
-                latency_ms=latency_ms,
-                plan_value="unknown",
-                subject_type=identity.subject_type,
-                subject_id=identity.subject_id,
-                input_tokens=None,
-                output_tokens_est=None,
-                error_code="request_schema_invalid",
-                waf_limiter=waf_limiter,
-                budget_ms_total=budget_ms_total,
-                timeout_where=None,
-                http_timeout_ms=http_timeout_ms,
-            )
-            return _failure_response(
-                status_code=400,
-                failure_type=FailureType.REQUEST_SCHEMA_INVALID,
-                reason="request validation failed",
-                action=ChatAction.REFUSE,
+            return _with_request_id(
+                JSONResponse(
+                    status_code=400,
+                    content={"ok": False, "error_code": "user_text_missing", "message": "user_text is required"},
+                ),
+                rid,
             )
 
         plan, limits, guard_error, input_tokens, budget_estimate = precheck_plan_and_quotas(chat_request.user_text, identity)
@@ -597,6 +657,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             if getattr(request.state, "waf_used_memory", False) and isinstance(guard_error, JSONResponse):
                 guard_error.headers["X-WAF-Limiter"] = "memory-fallback"
             if isinstance(guard_error, JSONResponse):
+                _with_request_id(guard_error, rid)
                 try:
                     body = guard_error.body
                     error_code = None
@@ -641,8 +702,11 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                     budget_ms_total=budget_ms_total,
                     timeout_where=None,
                     http_timeout_ms=http_timeout_ms,
+                    budget_scope=None,
                 )
         if guard_error is not None:
+            if isinstance(guard_error, JSONResponse):
+                return _with_request_id(guard_error, rid)
             return guard_error
 
         actor_key = _actor_key(identity)
@@ -688,6 +752,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 budget_ms_total=budget_ms_total,
                 timeout_where=None,
                 http_timeout_ms=http_timeout_ms,
+                budget_scope=cost_pre.scope,
             )
             payload = ContractChatResponse(
                 action=ChatAction.FALLBACK,
@@ -695,7 +760,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 failure_type=failure_type,
                 failure_reason=reason[:200],
             )
-            return JSONResponse(status_code=status_code, content=json.loads(payload.json()), headers=headers)
+            return _with_request_id(JSONResponse(status_code=status_code, content=json.loads(payload.json()), headers=headers), rid)
 
         # Routing policy (Step 4) with breaker/budget context
         requested_mode = _requested_mode(request, payload)
@@ -775,12 +840,14 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 timeout_where="model",
                 model_timeout_ms=effective_model_timeout_ms,
                 http_timeout_ms=http_timeout_ms,
+                budget_scope="request_budget",
             )
             return _failure_response(
                 status_code=500,
                 failure_type=FailureType.TIMEOUT,
                 reason="timeout",
                 action=ChatAction.FALLBACK,
+                request_id=rid,
             )
 
         async def _invoke_attempt(attempt_idx: int) -> str:
@@ -887,6 +954,16 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             timeout_where=step5_result.timeout_where,
             model_timeout_ms=effective_model_timeout_ms,
             http_timeout_ms=http_timeout_ms,
+            action=response.action.value,
+            failure_type=response.failure_type.value if response.failure_type else None,
+            failure_reason=response.failure_reason,
+            requested_mode=requested_mode.value if requested_mode else None,
+            granted_mode=route_plan.effective_mode.value,
+            model_class=route_plan.primary.model_class.value,
+            breaker_open=forced_breaker,
+            budget_block=forced_budget,
+            ip_hash=identity.ip_hash,
+            budget_scope=None,
         )
         logger.info(
             "[API] step5.summary",
@@ -907,7 +984,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 "latency_ms": latency_ms,
             },
         )
-        return JSONResponse(status_code=status_code, content=json_payload, headers=headers)
+        return _with_request_id(JSONResponse(status_code=status_code, content=json_payload, headers=headers), rid)
 
     try:
         return await enforce_timeout(_process, budget_ms_total)
@@ -940,12 +1017,14 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 timeout_where="total",
                 model_timeout_ms=None,
                 http_timeout_ms=http_timeout_ms,
+                budget_scope="total_timeout",
             )
             return _failure_response(
                 status_code=500,
                 failure_type=FailureType.TIMEOUT,
                 reason="timeout",
                 action=ChatAction.FALLBACK,
+                request_id=rid,
             )
         raise
 

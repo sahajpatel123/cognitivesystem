@@ -45,10 +45,18 @@ echo
 if [[ "$MODE_LOWER" == "staging" ]]; then
   echo "---- Import gates"
   python3 -c "import backend.app.main; print('OK backend.app.main import')" 
+  python3 -c "import backend.app.main as m; print('step6_header_ok=', hasattr(m, '_with_request_id'))"
+  python3 -c "import backend.app.main as m; print('step6_chat_summary_ok=', callable(getattr(m, '_emit_chat_summary', None)))"
   python3 -c "import backend.app.cost.policy; print('OK backend.app.cost import')" 
   python3 -c "import mci_backend.main; print('OK mci_backend.main import')" 
   python3 -c "from backend.app.observability.request_id import get_request_id; import inspect; print('get_request_id_callable=', callable(get_request_id))"
   python3 -c "import backend.app.main as m; print('datetime_in_main=', hasattr(m, 'datetime'))"
+  if [[ -f "$SCRIPT_DIR/../docs/PHASE16_STEP6_OBSERVABILITY_UPGRADE.md" ]]; then echo "step6_doc_upgrade_present=1"; else echo "step6_doc_upgrade_present=0"; fi
+  if [[ -f "$SCRIPT_DIR/../docs/DASHBOARD_SPEC.md" ]]; then echo "dashboard_spec_present=1"; else echo "dashboard_spec_present=0"; fi
+  if [[ -f "$SCRIPT_DIR/eval_gate.sh" ]]; then echo "eval_gate_present=1"; else echo "eval_gate_present=0"; fi
+  if [[ -x "$SCRIPT_DIR/eval_gate.sh" ]]; then echo "eval_gate_executable=1"; else echo "eval_gate_executable=0"; fi
+  if [[ -f "$SCRIPT_DIR/../backend/tests/test_step6_observability_contract.py" ]]; then echo "step6_contract_test_present=1"; else echo "step6_contract_test_present=0"; fi
+  if [[ -f "$SCRIPT_DIR/../backend/tests/test_step6_eval_gate_scenarios.py" ]]; then echo "step6_scenarios_test_present=1"; else echo "step6_scenarios_test_present=0"; fi
   bash -n "$SCRIPT_DIR/chaos_gate.sh"
   python3 -c "import backend.app.reliability.engine as e; print('step5_engine_ok=', hasattr(e,'run_step5'))"
   python3 -c "import backend.app.quality.gate as q; print('step5_quality_ok=', hasattr(q,'evaluate_quality'))"
