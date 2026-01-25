@@ -47,6 +47,7 @@ from backend.app.observability.request_id import get_request_id
 from backend.app.observability.logging import safe_redact
 from backend.app.plans.policy import Plan
 from backend.app.plans.tokens import clamp_text_to_token_limit, estimate_tokens_from_text
+from backend.app.security.entitlements import EntitlementsContext, decide_entitlements
 from backend.app.perf import (
     PerfTimeoutError,
     api_chat_total_timeout_ms,
@@ -62,6 +63,7 @@ from backend.app.models.policy import (
     Tier,
     ModelRoute,
     ModelRoutePlan,
+    ModelClass,
     decide_route,
 )
 from backend.app.reliability import (
@@ -302,6 +304,13 @@ def _actor_key(identity: IdentityContext) -> str:
     return f"ip:{identity.ip_hash}"
 
 
+def _hash_actor_key(actor_key: str) -> str:
+    try:
+        return hashlib.sha256(actor_key.encode("utf-8")).hexdigest()[:16]
+    except Exception:
+        return "unknown"
+
+
 def _requested_mode(request: Request, payload: dict | None) -> RequestedMode:
     # Optional JSON field "mode" or header "X-Mode"; defaults to DEFAULT
     header_mode = request.headers.get("X-Mode") if hasattr(request, "headers") else None
@@ -382,10 +391,15 @@ def _log_chat_summary(
     requested_mode: str | None = None,
     granted_mode: str | None = None,
     model_class: str | None = None,
+    model_class_cap: str | None = None,
+    effective_model_class: str | None = None,
     breaker_open: bool | None = None,
     budget_block: bool | None = None,
     ip_hash: str | None = None,
     budget_scope: str | None = None,
+    entitlements_reason: str | None = None,
+    quota_reason: str | None = None,
+    actor_hash: str | None = None,
 ) -> None:
     waf_info = _waf_meta(request)
     plan_info = _plan_meta(request)
@@ -442,6 +456,8 @@ def _log_chat_summary(
         "requested_mode": requested_mode or "none",
         "granted_mode": granted_mode or "unknown",
         "model_class": model_class or "unknown",
+        "model_class_cap": model_class_cap,
+        "effective_model_class": effective_model_class,
         "action": effective_action,
         "failure_type": effective_failure_type,
         "failure_reason": (failure_reason[:200] if failure_reason else None),
@@ -456,6 +472,9 @@ def _log_chat_summary(
         "subject_type": subject_type,
         "subject_id_hash": hashed,
         "ip_hash": ip_hash,
+        "entitlements_reason": entitlements_reason,
+        "quota_reason": quota_reason,
+        "actor_hash": actor_hash,
         "sampled": sampled,
         "version": APP_VERSION,
     }
@@ -599,6 +618,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                     budget_ms_total=budget_ms_total,
                     timeout_where=None,
                     http_timeout_ms=http_timeout_ms,
+                    budget_scope=None,
                 )
                 return _with_request_id(
                     JSONResponse(
@@ -648,7 +668,17 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 rid,
             )
 
-        plan, limits, guard_error, input_tokens, budget_estimate = precheck_plan_and_quotas(chat_request.user_text, identity)
+        chat_user_text = user_text.strip()
+        requested_mode = _requested_mode(request, payload)
+        requested_model_class = None
+        if isinstance(payload, dict):
+            maybe_model_class = payload.get("model_class")
+            if isinstance(maybe_model_class, str):
+                requested_model_class = maybe_model_class.strip()
+
+        plan, limits, guard_error, input_tokens, budget_estimate = precheck_plan_and_quotas(chat_user_text, identity)
+        if not plan:
+            plan = Plan.FREE
         try:
             request.state.plan_meta = {"decision": "allow", "error_code": None, "plan": plan.value}
         except Exception:
@@ -676,7 +706,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                         "subject_type": identity.subject_type,
                         "subject_id": identity.subject_id,
                         "plan": plan.value,
-                        "input_chars": len(chat_request.user_text),
+                        "input_chars": len(chat_user_text),
                         "input_tokens": input_tokens,
                         "budget_estimate": budget_estimate,
                         "waf_limiter": waf_limiter,
@@ -710,6 +740,34 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             return guard_error
 
         actor_key = _actor_key(identity)
+        actor_hash = _hash_actor_key(actor_key)
+
+        ent_effective_mode_value = "default"
+        ent_model_class_cap = "fast"
+        ent_reason_code = None
+        try:
+            ent_ctx = EntitlementsContext(
+                plan=plan.value,
+                requested_mode=requested_mode.value,
+                requested_model_class=requested_model_class,
+                subject_type=identity.subject_type,
+                subject_id=identity.subject_id,
+            )
+            ent_decision = decide_entitlements(ent_ctx)
+            ent_effective_mode_value = (
+                ent_decision.effective_mode
+                if ent_decision and ent_decision.effective_mode in RequestedMode._value2member_map_
+                else "default"
+            )
+            ent_model_class_cap = getattr(ent_decision, "model_class_cap", "fast")
+            ent_reason_code = getattr(ent_decision, "reason_code", None)
+        except Exception:
+            ent_effective_mode_value = "default"
+            ent_model_class_cap = "fast"
+            ent_reason_code = "ENTITLEMENTS_ERROR_FALLBACK"
+
+        ent_requested_mode = RequestedMode(ent_effective_mode_value)
+
         cost_pre = cost_policy.precheck(
             request_id=rid,
             actor_key=actor_key,
@@ -753,6 +811,13 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 timeout_where=None,
                 http_timeout_ms=http_timeout_ms,
                 budget_scope=cost_pre.scope,
+                requested_mode=ent_requested_mode.value if ent_requested_mode else None,
+                granted_mode=ent_requested_mode.value if ent_requested_mode else None,
+                model_class_cap=ent_model_class_cap,
+                effective_model_class=ent_model_class_cap,
+                entitlements_reason=(ent_reason_code or "")[:200],
+                quota_reason=None,
+                actor_hash=actor_hash,
             )
             payload = ContractChatResponse(
                 action=ChatAction.FALLBACK,
@@ -762,19 +827,37 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             )
             return _with_request_id(JSONResponse(status_code=status_code, content=json.loads(payload.json()), headers=headers), rid)
 
-        # Routing policy (Step 4) with breaker/budget context
-        requested_mode = _requested_mode(request, payload)
-        tier = _tier_from_plan(plan)
         forced_breaker = evaluate_breaker(False)
         forced_budget = force_budget_blocked()
         route_ctx = RoutingContext(
-            tier=tier,
-            requested_mode=requested_mode,
+            tier=_tier_from_plan(plan),
+            requested_mode=ent_requested_mode,
             breaker_open=forced_breaker,
             budget_tight=forced_budget,
             est_input_tokens=input_tokens,
         )
         route_plan = decide_route(route_ctx)
+
+        def _clamped(mc: ModelClass) -> ModelClass:
+            order = [ModelClass.FAST.value, ModelClass.BALANCED.value, ModelClass.STRONG.value]
+            cap_val = (ent_model_class_cap or ModelClass.FAST.value).lower()
+            cur_val = mc.value if isinstance(mc, ModelClass) else str(mc)
+            try:
+                cap_idx = order.index(cap_val)
+            except ValueError:
+                cap_idx = 0
+            try:
+                cur_idx = order.index(cur_val)
+            except ValueError:
+                cur_idx = len(order) - 1
+            return ModelClass(order[min(cur_idx, cap_idx)])
+
+        route_plan.primary.model_class = _clamped(route_plan.primary.model_class)
+        for fb in route_plan.fallbacks:
+            fb.model_class = _clamped(fb.model_class)
+
+        ent_effective_model_class = route_plan.primary.model_class.value
+
         logger.info(
             "[API] routing decision",
             extra={
@@ -786,6 +869,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 "fallback_count": len(route_plan.fallbacks),
                 "breaker_open": forced_breaker,
                 "budget_flag": forced_budget,
+                "entitlements_reason": (ent_reason_code or "")[:200],
             },
         )
         try:
@@ -809,7 +893,6 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
         budget_remaining_before_model = remaining_budget_ms(start_ts, budget_ms_total)
         model_timeout_ms_value = model_call_timeout_ms()
         effective_model_timeout_ms = max(1000, min(model_timeout_ms_value, budget_remaining_before_model))
-        timeout_where = None
 
         if budget_remaining_before_model <= 0:
             latency_ms = (time.monotonic() - start_ts) * 1000
@@ -841,6 +924,14 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 model_timeout_ms=effective_model_timeout_ms,
                 http_timeout_ms=http_timeout_ms,
                 budget_scope="request_budget",
+                requested_mode=ent_requested_mode.value if ent_requested_mode else None,
+                granted_mode=route_plan.effective_mode.value,
+                model_class=route_plan.primary.model_class.value,
+                model_class_cap=ent_model_class_cap,
+                effective_model_class=ent_effective_model_class,
+                entitlements_reason=(ent_reason_code or "")[:200],
+                quota_reason=None,
+                actor_hash=actor_hash,
             )
             return _failure_response(
                 status_code=500,
@@ -851,7 +942,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             )
 
         async def _invoke_attempt(attempt_idx: int) -> str:
-            result = await asyncio.to_thread(render_governed_response, chat_request.user_text)
+            result = await asyncio.to_thread(render_governed_response, chat_user_text)
             if not result.ok:
                 raise RuntimeError("provider_failure")
             output_text = result.output_text or ""
@@ -869,7 +960,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             total_timeout_ms=budget_remaining_before_model,
             per_attempt_timeout_ms=effective_model_timeout_ms,
             max_attempts=2,
-            mode_requested=requested_mode.value if requested_mode else None,
+            mode_requested=ent_requested_mode.value if ent_requested_mode else None,
             mode_effective=route_plan.effective_mode.value,
             model_class_effective=route_plan.primary.model_class.value,
         )
@@ -957,13 +1048,18 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             action=response.action.value,
             failure_type=response.failure_type.value if response.failure_type else None,
             failure_reason=response.failure_reason,
-            requested_mode=requested_mode.value if requested_mode else None,
+            requested_mode=ent_requested_mode.value if ent_requested_mode else None,
             granted_mode=route_plan.effective_mode.value,
             model_class=route_plan.primary.model_class.value,
+            model_class_cap=ent_model_class_cap,
+            effective_model_class=ent_effective_model_class,
             breaker_open=forced_breaker,
             budget_block=forced_budget,
             ip_hash=identity.ip_hash,
             budget_scope=None,
+            entitlements_reason=(ent_reason_code or "")[:200],
+            quota_reason=None,
+            actor_hash=actor_hash,
         )
         logger.info(
             "[API] step5.summary",
@@ -974,7 +1070,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 "failure_type": response.failure_type.value if response.failure_type else None,
                 "failure_reason": response.failure_reason[:200] if response.failure_reason else None,
                 "plan_value": plan.value,
-                "mode_requested": requested_mode.value if requested_mode else None,
+                "mode_requested": ent_requested_mode.value if ent_requested_mode else None,
                 "mode_effective": route_plan.effective_mode.value,
                 "model_class_effective": route_plan.primary.model_class.value,
                 "attempts": step5_result.attempts,
@@ -982,6 +1078,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 "budget_blocked": forced_budget,
                 "timeout_where": step5_result.timeout_where,
                 "latency_ms": latency_ms,
+                "entitlements_reason": (ent_reason_code or "")[:200],
             },
         )
         return _with_request_id(JSONResponse(status_code=status_code, content=json_payload, headers=headers), rid)
