@@ -177,3 +177,48 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
     - dashboard spec available in docs/DASHBOARD_SPEC.md
   notes: "Passive only; no changes to routing/quality/safety; logs remain content-free (no user_text/rendered_text)."
 ```
+
+## Step 7B Evidence (Pass 1: Security Headers)
+```
+- date: 2026-01-25
+  type: step16.7_security_headers
+  staging_base: https://cognitivesystem-staging.up.railway.app
+  summary: "Deterministic security headers added with optional HSTS on https non-local; Cache-Control no-store for API responses; import gate and unit test for headers contract."
+  commands_local:
+    - python3 -m compileall backend mci_backend
+    - python3 -c "import backend.app.main; print('OK backend.app.main import')"
+    - python3 -c "from backend.app.security.headers import security_headers; print('hdrs=', sorted(list(security_headers(is_https=False,is_non_local=False).keys()))[:3])"
+    - pytest -q backend/tests/test_step7_headers.py
+    - bash -n scripts/promotion_gate.sh
+  commands_staging:
+    - MODE=staging BASE=$STAGING_BASE ./scripts/promotion_gate.sh
+    - curl -s -D - -o /dev/null -H "Content-Type: application/json" -d '{"user_text":"hi"}' "$STAGING_BASE/api/chat" | grep -E "^(Strict-Transport-Security|X-Content-Type-Options|Referrer-Policy|X-Frame-Options|Permissions-Policy)"
+  expected_outcomes:
+    - Security headers present on /api/chat responses; HSTS only when https and non-local
+    - Header unit test passes locally; import gate passes
+    - No schema changes; user_text not logged
+  notes: "Pass 1 focuses on headers and verification; abuse scoring deferred to later pass."
+```
+
+## Step 7B Evidence (Pass 2: Suspicious Request Throttling)
+```
+- date: 2026-01-25
+  type: step16.7_suspicious_request_throttle
+  staging_base: https://cognitivesystem-staging.up.railway.app
+  summary: "Deterministic abuse scoring for /api/chat with explicit 403/429 enforcement; security gate script and docs added; tests cover headers and abuse scoring."
+  commands_local:
+    - python3 -m compileall backend mci_backend
+    - python3 -c "import backend.app.main; print('OK backend.app.main import')"
+    - python3 -c "from backend.app.security.abuse import decide_abuse, AbuseContext; print('abuse_callable=', callable(decide_abuse))"
+    - pytest -q backend/tests/test_step7_abuse_scoring.py backend/tests/test_step7_headers.py
+    - bash -n scripts/promotion_gate.sh scripts/security_gate.sh
+  commands_staging:
+    - MODE=staging BASE=$STAGING_BASE ./scripts/promotion_gate.sh
+    - BASE=$STAGING_BASE ./scripts/security_gate.sh
+    - curl -s -i -H "Content-Type: application/json" -H "User-Agent:" -H "Accept:" -d '{"user_text":"hi"}' "$STAGING_BASE/api/chat" | sed -n '1,20p'
+  expected_outcomes:
+    - Headers contract intact; HSTS only on https non-local
+    - Suspicious requests receive 429 or 403 with deterministic failure_type (RATE_LIMITED or ABUSE_BLOCKED) and Retry-After
+    - Normal requests unaffected; user_text not logged
+  notes: "Pass 2 adds defensive throttle only; no model/provider changes."
+```

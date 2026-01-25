@@ -48,6 +48,8 @@ from backend.app.observability.logging import safe_redact
 from backend.app.plans.policy import Plan
 from backend.app.plans.tokens import clamp_text_to_token_limit, estimate_tokens_from_text
 from backend.app.security.entitlements import EntitlementsContext, decide_entitlements
+from backend.app.security.headers import apply_security_headers, maybe_harden_cookies
+from backend.app.security.abuse import AbuseContext, decide_abuse
 from backend.app.perf import (
     PerfTimeoutError,
     api_chat_total_timeout_ms,
@@ -400,6 +402,10 @@ def _log_chat_summary(
     entitlements_reason: str | None = None,
     quota_reason: str | None = None,
     actor_hash: str | None = None,
+    abuse_score: int | None = None,
+    abuse_action: str | None = None,
+    abuse_allowed: bool | None = None,
+    abuse_reason: str | None = None,
 ) -> None:
     waf_info = _waf_meta(request)
     plan_info = _plan_meta(request)
@@ -427,6 +433,10 @@ def _log_chat_summary(
         "timeout_where": timeout_where,
         "model_timeout_ms": model_timeout_ms,
         "http_timeout_ms": http_timeout_ms,
+        "abuse_score": abuse_score,
+        "abuse_action": abuse_action,
+        "abuse_allowed": abuse_allowed,
+        "abuse_reason": abuse_reason,
     }
     invocation_written = record_invocation(
         {
@@ -739,6 +749,85 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 return _with_request_id(guard_error, rid)
             return guard_error
 
+        # Abuse/suspicion throttle (deterministic, pre-cost)
+        is_non_local = (_settings.app_env or "local").lower() in {"staging", "production", "prod"} or (
+            (request.url.hostname or "").lower() not in {"localhost", "127.0.0.1", "::1"}
+        )
+        abuse_ctx = AbuseContext(
+            path=str(request.url.path),
+            request_id=rid,
+            ip_hash=identity.ip_hash,
+            actor_key=_actor_key(identity),
+            subject_type=identity.subject_type,
+            subject_id=identity.subject_id,
+            waf_limiter=waf_limiter,
+            user_agent=request.headers.get("user-agent"),
+            accept=request.headers.get("accept"),
+            content_type=request.headers.get("content-type"),
+            method=request.method,
+            has_auth=bool(identity.is_authenticated),
+            is_sensitive_path=True,
+            request_scheme=request.url.scheme,
+            is_non_local=is_non_local,
+        )
+        abuse_decision = decide_abuse(abuse_ctx)
+        abuse_score = abuse_decision.score
+        abuse_action = abuse_decision.action
+        abuse_allowed = abuse_decision.allowed
+        abuse_reason = (abuse_decision.reason or "")[:200]
+        if not abuse_decision.allowed:
+            status_code = 403 if abuse_decision.action == "BLOCK" else 429
+            headers = {}
+            if abuse_decision.retry_after_s is not None:
+                headers["Retry-After"] = str(abuse_decision.retry_after_s)
+            latency_ms = (time.monotonic() - start_ts) * 1000
+            reason = abuse_reason if abuse_reason else "abuse"
+            failure_type = FailureType.ABUSE_BLOCKED if abuse_decision.action == "BLOCK" else FailureType.RATE_LIMITED
+            payload_resp = ContractChatResponse(
+                action=ChatAction.FALLBACK,
+                rendered_text=(
+                    "Request blocked by security policy." if abuse_decision.action == "BLOCK" else "Too many suspicious requests. Please retry shortly."
+                ),
+                failure_type=failure_type,
+                failure_reason=reason,
+            )
+            _log_chat_summary(
+                request=request,
+                request_id=rid,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                plan_value=plan.value,
+                subject_type=identity.subject_type,
+                subject_id=identity.subject_id,
+                input_tokens=input_tokens,
+                output_tokens_est=limits.max_output_tokens,
+                error_code=f"abuse_{abuse_decision.action.lower()}",
+                waf_limiter=waf_limiter,
+                budget_ms_total=budget_ms_total,
+                timeout_where=None,
+                http_timeout_ms=http_timeout_ms,
+                action=payload_resp.action.value,
+                failure_type=payload_resp.failure_type.value if payload_resp.failure_type else None,
+                failure_reason=payload_resp.failure_reason,
+                requested_mode=requested_mode.value if requested_mode else None,
+                granted_mode=None,
+                model_class=None,
+                model_class_cap=None,
+                effective_model_class=None,
+                breaker_open=None,
+                budget_block=None,
+                ip_hash=identity.ip_hash,
+                budget_scope=None,
+                entitlements_reason=None,
+                quota_reason=None,
+                actor_hash=_hash_actor_key(_actor_key(identity)),
+                abuse_score=abuse_score,
+                abuse_action=abuse_action,
+                abuse_allowed=abuse_allowed,
+                abuse_reason=abuse_reason,
+            )
+            return _with_request_id(JSONResponse(status_code=status_code, content=json.loads(payload_resp.json()), headers=headers), rid)
+
         actor_key = _actor_key(identity)
         actor_hash = _hash_actor_key(actor_key)
 
@@ -818,6 +907,10 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 entitlements_reason=(ent_reason_code or "")[:200],
                 quota_reason=None,
                 actor_hash=actor_hash,
+                abuse_score=abuse_score,
+                abuse_action=abuse_action,
+                abuse_allowed=abuse_allowed,
+                abuse_reason=abuse_reason,
             )
             payload = ContractChatResponse(
                 action=ChatAction.FALLBACK,
@@ -932,6 +1025,10 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 entitlements_reason=(ent_reason_code or "")[:200],
                 quota_reason=None,
                 actor_hash=actor_hash,
+                abuse_score=abuse_score,
+                abuse_action=abuse_action,
+                abuse_allowed=abuse_allowed,
+                abuse_reason=abuse_reason,
             )
             return _failure_response(
                 status_code=500,
@@ -1060,6 +1157,10 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             entitlements_reason=(ent_reason_code or "")[:200],
             quota_reason=None,
             actor_hash=actor_hash,
+            abuse_score=abuse_score,
+            abuse_action=abuse_action,
+            abuse_allowed=abuse_allowed,
+            abuse_reason=abuse_reason,
         )
         logger.info(
             "[API] step5.summary",
@@ -1141,3 +1242,20 @@ async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONRe
     if str(_settings.debug_errors) == "1":
         content["detail"] = str(exc)
     return JSONResponse(status_code=500, content=content)
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    host = (request.url.hostname or "").lower()
+    env = (_settings.app_env or "local").lower()
+    is_non_local = env in {"staging", "production", "prod"} or host not in {"localhost", "127.0.0.1", "::1"}
+    is_https = request.url.scheme == "https"
+    response = None
+    try:
+        response = await call_next(request)
+    finally:
+        if response is not None:
+            apply_security_headers(response, is_https=is_https, is_non_local=is_non_local)
+            if is_https and is_non_local:
+                maybe_harden_cookies(response, should_secure=True)
+    return response
