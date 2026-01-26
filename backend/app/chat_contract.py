@@ -61,6 +61,8 @@ class ChatResponse(BaseModel):
     rendered_text: StrictStr
     failure_type: Optional[FailureType] = None
     failure_reason: Optional[StrictStr] = Field(default=None, max_length=MAX_FAILURE_REASON_CHARS)
+    ux_state: StrictStr = Field(default="ERROR")
+    cooldown_seconds: Optional[int] = None
 
     model_config = ConfigDict(extra="forbid")
 

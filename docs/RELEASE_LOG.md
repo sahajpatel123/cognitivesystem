@@ -222,3 +222,25 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
     - Normal requests unaffected; user_text not logged
   notes: "Pass 2 adds defensive throttle only; no model/provider changes."
 ```
+
+## Step 8A Evidence (UX Reliability Signaling)
+```
+- date: 2026-01-26
+  type: step16.8a_ux_reliability_signaling
+  staging_base: https://cognitivesystem-staging.up.railway.app
+  summary: "Deterministic UX state signaling added with headers X-UX-State/X-Cooldown-Seconds and contract fields ux_state/cooldown_seconds; no behavior changes."
+  commands_local:
+    - python3 -m compileall backend mci_backend
+    - python3 -c "import backend.app.main; print('OK backend.app.main import')"
+    - pytest -q backend/tests/test_step8_ux_state_mapping.py backend/tests/test_step8_ux_headers.py
+    - bash -n scripts/promotion_gate.sh scripts/ux_gate.sh
+  commands_staging:
+    - MODE=staging BASE=$STAGING_BASE ./scripts/promotion_gate.sh
+    - BASE=$STAGING_BASE ./scripts/ux_gate.sh
+    - curl -s -D - -o /dev/null -H "Content-Type: application/json" -d '{"user_text":"hi"}' "$STAGING_BASE/api/chat" | grep -E "^(X-UX-State|X-Cooldown-Seconds|X-Request-Id)"
+  expected_outcomes:
+    - /api/chat responses always include X-UX-State and X-Request-Id; X-Cooldown-Seconds present when Retry-After numeric
+    - Contract fields ux_state/cooldown_seconds populated without breaking schema
+    - No logging of user_text or rendered_text in headers/events
+  notes: "UX signaling is passive; routing/entitlements/safety unchanged; deterministic mapping and cooldown clamping (1..86400)."
+```

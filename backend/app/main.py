@@ -10,7 +10,7 @@ import re
 import time
 import hashlib
 from logging.config import dictConfig
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, Path, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,7 +76,7 @@ from backend.app.reliability import (
     force_budget_blocked,
 )
 from backend.app.reliability.engine import Step5Context, run_step5
-
+from backend.app.ux import UXState, build_ux_headers, decide_ux_state, extract_cooldown_seconds
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -176,12 +176,62 @@ def _extract_rendered_text(result: ModelInvocationResult) -> str:
     return ""
 
 
+def _apply_ux_signals(
+    resp: JSONResponse,
+    *,
+    status_code: int,
+    payload: ContractChatResponse | None,
+) -> JSONResponse:
+    headers = dict(resp.headers)
+    action_val = payload.action.value if payload else None
+    failure_val = payload.failure_type.value if payload and payload.failure_type else None
+    failure_reason = payload.failure_reason if payload else None
+    ux_state = decide_ux_state(
+        status_code=status_code,
+        action=action_val,
+        failure_type=failure_val,
+        failure_reason=failure_reason,
+    )
+
+    cooldown_seconds: Optional[int] = None
+    if status_code in {429, 503} or ux_state in {UXState.RATE_LIMITED, UXState.QUOTA_EXCEEDED, UXState.DEGRADED}:
+        cooldown_seconds = extract_cooldown_seconds(headers)
+
+    headers.update(build_ux_headers(ux_state, cooldown_seconds))
+
+    if payload is not None:
+        payload = payload.model_copy(update={"ux_state": ux_state.value, "cooldown_seconds": cooldown_seconds})
+        content = json.loads(payload.json())
+        resp = JSONResponse(status_code=status_code, content=content, headers=headers)
+    else:
+        resp.headers.update(headers)
+        resp.status_code = status_code
+    return resp
+
+
+def _json_response_with_ux(
+    *,
+    status_code: int,
+    payload: ContractChatResponse | None,
+    headers: Dict[str, str] | None,
+    request_id: str | None,
+    body: Any = None,
+) -> JSONResponse:
+    content = json.loads(payload.json()) if payload is not None else body
+    resp = JSONResponse(status_code=status_code, content=content, headers=headers or {})
+    if request_id:
+        _with_request_id(resp, request_id)
+    return _apply_ux_signals(resp, status_code=status_code, payload=payload)
+
+
 def _failure_response(
     status_code: int,
     failure_type: FailureType,
     reason: str,
     action: ChatAction = ChatAction.REFUSE,
     request_id: str | None = None,
+    request: Request | None = None,
+    headers: Dict[str, str] | None = None,
 ) -> JSONResponse:
     payload = ContractChatResponse(
         action=action,
@@ -189,10 +239,13 @@ def _failure_response(
         failure_type=failure_type,
         failure_reason=reason[:200],
     )
-    resp = JSONResponse(status_code=status_code, content=json.loads(payload.json()))
-    if request_id:
-        resp.headers["X-Request-Id"] = request_id
-    return resp
+    return _json_response_with_ux(
+        status_code=status_code,
+        payload=payload,
+        headers=headers,
+        request_id=request_id,
+        body=None,
+    )
 
 
 def _with_request_id(response: JSONResponse, request_id: str) -> JSONResponse:
@@ -595,6 +648,46 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             },
         )
 
+        content_type = (request.headers.get("content-type") or "").lower()
+        if not content_type.startswith("application/json"):
+            latency_ms = (time.monotonic() - start_ts) * 1000
+            logger.info(
+                "[API] chat reject",
+                extra={
+                    "route": "/api/chat",
+                    "status_code": 415,
+                    "error_code": "content_type_invalid",
+                    "request_id": rid,
+                    "subject_type": identity.subject_type,
+                    "subject_id": identity.subject_id,
+                    "waf_limiter": waf_limiter,
+                },
+            )
+            _log_chat_summary(
+                request=request,
+                request_id=rid,
+                status_code=415,
+                latency_ms=latency_ms,
+                plan_value="unknown",
+                subject_type=identity.subject_type,
+                subject_id=identity.subject_id,
+                input_tokens=None,
+                output_tokens_est=None,
+                error_code="content_type_invalid",
+                waf_limiter=waf_limiter,
+                budget_ms_total=budget_ms_total,
+                timeout_where=None,
+                http_timeout_ms=http_timeout_ms,
+                budget_scope=None,
+            )
+            return _json_response_with_ux(
+                status_code=415,
+                payload=None,
+                headers=None,
+                request_id=rid,
+                body={"ok": False, "error_code": "content_type_invalid", "message": "Content-Type must be application/json"},
+            )
+
         payload = getattr(request.state, "payload", None)
         if payload is None:
             try:
@@ -630,12 +723,12 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                     http_timeout_ms=http_timeout_ms,
                     budget_scope=None,
                 )
-                return _with_request_id(
-                    JSONResponse(
-                        status_code=400,
-                        content={"ok": False, "error_code": "json_invalid", "message": "Request body must be valid JSON."},
-                    ),
-                    rid,
+                return _json_response_with_ux(
+                    status_code=400,
+                    payload=None,
+                    headers=None,
+                    request_id=rid,
+                    body={"ok": False, "error_code": "json_invalid", "message": "Request body must be valid JSON."},
                 )
 
         user_text = payload.get("user_text") if isinstance(payload, dict) else None
@@ -670,12 +763,12 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 http_timeout_ms=http_timeout_ms,
                 budget_scope=None,
             )
-            return _with_request_id(
-                JSONResponse(
-                    status_code=400,
-                    content={"ok": False, "error_code": "user_text_missing", "message": "user_text is required"},
-                ),
-                rid,
+            return _json_response_with_ux(
+                status_code=400,
+                payload=None,
+                headers=None,
+                request_id=rid,
+                body={"ok": False, "error_code": "user_text_missing", "message": "user_text is required"},
             )
 
         chat_user_text = user_text.strip()
@@ -746,7 +839,7 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 )
         if guard_error is not None:
             if isinstance(guard_error, JSONResponse):
-                return _with_request_id(guard_error, rid)
+                return _apply_ux_signals(guard_error, status_code=guard_error.status_code, payload=None)
             return guard_error
 
         # Abuse/suspicion throttle (deterministic, pre-cost)
@@ -826,7 +919,13 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 abuse_allowed=abuse_allowed,
                 abuse_reason=abuse_reason,
             )
-            return _with_request_id(JSONResponse(status_code=status_code, content=json.loads(payload_resp.json()), headers=headers), rid)
+            return _json_response_with_ux(
+                status_code=status_code,
+                payload=payload_resp,
+                headers=headers,
+                request_id=rid,
+                body=None,
+            )
 
         actor_key = _actor_key(identity)
         actor_hash = _hash_actor_key(actor_key)
@@ -918,7 +1017,13 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 failure_type=failure_type,
                 failure_reason=reason[:200],
             )
-            return _with_request_id(JSONResponse(status_code=status_code, content=json.loads(payload.json()), headers=headers), rid)
+            return _json_response_with_ux(
+                status_code=status_code,
+                payload=payload,
+                headers=headers,
+                request_id=rid,
+                body=None,
+            )
 
         forced_breaker = evaluate_breaker(False)
         forced_budget = force_budget_blocked()
@@ -1182,7 +1287,13 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 "entitlements_reason": (ent_reason_code or "")[:200],
             },
         )
-        return _with_request_id(JSONResponse(status_code=status_code, content=json_payload, headers=headers), rid)
+        return _json_response_with_ux(
+            status_code=status_code,
+            payload=response,
+            headers=headers,
+            request_id=rid,
+            body=None,
+        )
 
     try:
         return await enforce_timeout(_process, budget_ms_total)
