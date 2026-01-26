@@ -264,3 +264,24 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
     - Request ID shown truncated with copy control; no user_text/rendered_text leaked.
   notes: "Frontend layer is passive; no backend decision changes; UX signaling stable on mobile/desktop."
 ```
+
+## Step 8C Evidence (Staging UX Reliability Certification)
+```
+- date: 2026-01-26
+  type: step16.8c_staging_ux_cert
+  summary: "415 content-type error now emits X-UX-State alongside X-Request-Id; staging gates pass."
+  commands_local:
+    - python3 -m compileall backend mci_backend
+    - python3 -c "import backend.app.main; print('OK backend.app.main import')"
+    - bash -n scripts/promotion_gate.sh scripts/ux_gate.sh scripts/ux_frontend_gate.sh
+  commands_staging:
+    - MODE=staging BASE=$STAGING_BASE ./scripts/promotion_gate.sh
+    - BASE=$STAGING_BASE ./scripts/ux_gate.sh
+    - curl -s -D - -o /dev/null -H "Content-Type: text/plain" -d "hi" "$STAGING_BASE/api/chat" | grep -Ei "^(x-ux-state|x-request-id|content-type|http/|date:|server:)"
+  observed_headers:
+    - "HTTP/2 415 ..."
+    - "content-type: application/json"
+    - "x-request-id: <id>"
+    - "x-ux-state: ERROR"
+  notes: "No schema/body changes; only header injection on 415; user_text/rendered_text not emitted."
+```

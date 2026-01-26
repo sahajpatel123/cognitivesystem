@@ -680,13 +680,15 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
                 http_timeout_ms=http_timeout_ms,
                 budget_scope=None,
             )
-            return _json_response_with_ux(
+            resp = _json_response_with_ux(
                 status_code=415,
                 payload=None,
-                headers=None,
+                headers={"X-UX-State": UXState.ERROR.value},
                 request_id=rid,
                 body={"ok": False, "error_code": "content_type_invalid", "message": "Content-Type must be application/json"},
             )
+            resp.headers["X-UX-State"] = UXState.ERROR.value
+            return resp
 
         payload = getattr(request.state, "payload", None)
         if payload is None:
