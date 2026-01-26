@@ -1,0 +1,11 @@
+{
+  "name": "cognitivesystem-root",
+  "private": true,
+  "scripts": {
+    "install": "npm --prefix frontend install",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix frontend run test || npm --prefix frontend run test:ui",
+    "lint": "npm --prefix frontend run lint",
+    "dev": "npm --prefix frontend run dev"
+  }
+}
