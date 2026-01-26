@@ -15,6 +15,8 @@ import {
   SessionState,
   isExpired,
 } from "./session_runtime";
+import { SystemStatus } from "../../components/system-status";
+import { UXState, clampCooldownSeconds, normalizeUxState } from "../../lib/ux_state";
 
 type Message = {
   id: string;
@@ -47,6 +49,10 @@ export default function ChatPage() {
   const [lastUserText, setLastUserText] = useState<string | null>(null);
   const [uiState, setUiState] = useState<UiState>("IDLE");
   const uiStateRef = useRef<UiState>("IDLE");
+  const [uxState, setUxState] = useState<UXState>("OK");
+  const [cooldownSeconds, setCooldownSeconds] = useState<number | null>(null);
+  const [cooldownEndsAtMs, setCooldownEndsAtMs] = useState<number | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(null);
   const [session, setSession] = useState<SessionState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -55,6 +61,22 @@ export default function ChatPage() {
   useEffect(() => {
     uiStateRef.current = uiState;
   }, [uiState]);
+
+  useEffect(() => {
+    if (!cooldownEndsAtMs) return;
+    const id = setInterval(() => {
+      const remainingMs = cooldownEndsAtMs - Date.now();
+      const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+      const clamped = clampCooldownSeconds(remainingSeconds);
+      if (!clamped) {
+        setCooldownSeconds(null);
+        setCooldownEndsAtMs(null);
+      } else {
+        setCooldownSeconds(clamped);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [cooldownEndsAtMs]);
 
   useEffect(() => {
     const restored = loadSession();
@@ -81,9 +103,13 @@ export default function ChatPage() {
     return sys?.action;
   }, [messages]);
 
+  const cooldownActive = !!(cooldownSeconds && cooldownSeconds > 0);
   const inputDisabled =
-    uiState === "SENDING" || uiState === "TERMINAL" || (lastSystemAction && closedActions.includes(lastSystemAction));
-  const sendDisabled = inputDisabled || input.trim().length === 0;
+    uiState === "SENDING" ||
+    uiState === "TERMINAL" ||
+    (lastSystemAction && closedActions.includes(lastSystemAction)) ||
+    cooldownActive;
+  const sendDisabled = inputDisabled || cooldownActive || input.trim().length === 0;
 
   const remainingMinutes = useMemo(() => {
     if (!session) return null;
@@ -152,6 +178,21 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
       });
+
+      const hdrUx = res.headers.get("X-UX-State") || res.headers.get("x-ux-state");
+      const hdrCd = res.headers.get("X-Cooldown-Seconds") || res.headers.get("x-cooldown-seconds");
+      const hdrRid = res.headers.get("X-Request-Id") || res.headers.get("x-request-id");
+      const newUx = normalizeUxState(hdrUx);
+      const newCooldown = clampCooldownSeconds(hdrCd ? Number(hdrCd) : null);
+      setUxState(newUx);
+      setRequestId(hdrRid);
+      if (newCooldown) {
+        setCooldownSeconds(newCooldown);
+        setCooldownEndsAtMs(Date.now() + newCooldown * 1000);
+      } else {
+        setCooldownSeconds(null);
+        setCooldownEndsAtMs(null);
+      }
       if (!res.ok) {
         let friendly = "Request failed. Please retry.";
         if (res.status === 415) {
@@ -245,6 +286,7 @@ export default function ChatPage() {
 
   const lastSystem = useMemo(() => [...messages].reverse().find((m) => m.role === "system"), [messages]);
   const statusLabel = uiState === "TERMINAL" ? "TERMINAL" : uiState === "FAILED" ? "FAILED" : uiState === "SENDING" ? "SENDING" : "IDLE";
+  const truncatedRid = requestId ? requestId.slice(-8) : null;
   const failureLabel = lastSystem?.failureType ? lastSystem.failureType : "NONE";
   const actionLabel = lastSystem?.action ?? "—";
 
@@ -267,12 +309,32 @@ export default function ChatPage() {
       </div>
 
       <div className="chat-shell">
+        <SystemStatus
+          uxState={uxState}
+          cooldownSeconds={cooldownSeconds}
+          requestId={requestId}
+          onRetry={lastUserText ? () => void sendMessage(lastUserText, true) : undefined}
+        />
         <div className="state-strip" aria-label="System state">
           <span>Action: {actionLabel}</span>
           <span>Status: {statusLabel}</span>
           <span>Failure: {failureLabel}</span>
           <span>Session: {sessionExpired ? "EXPIRED" : "ACTIVE"}</span>
           {remainingMinutes !== null && <span>TTL: {remainingMinutes}m</span>}
+          {truncatedRid ? (
+            <button
+              type="button"
+              className="rid-copy"
+              onClick={() => {
+                if (requestId) {
+                  void navigator.clipboard?.writeText(requestId);
+                }
+              }}
+              aria-label="Copy request id"
+            >
+              Req ID …{truncatedRid}
+            </button>
+          ) : null}
         </div>
         <div className="chat-messages" ref={listRef} aria-live="polite">
           {messages.length === 0 && <div className="chat-empty">Send a message to begin.</div>}
@@ -359,6 +421,17 @@ export default function ChatPage() {
           color: #cbd5e1;
           font-size: 12px;
           flex-wrap: wrap;
+        }
+        .state-strip .rid-copy {
+          border: 1px solid #1f2937;
+          background: #0f172a;
+          color: #e5e7eb;
+          border-radius: 8px;
+          padding: 4px 8px;
+          font-size: 12px;
+        }
+        .state-strip .rid-copy:hover {
+          background: #111827;
         }
         .chat-row {
           display: grid;

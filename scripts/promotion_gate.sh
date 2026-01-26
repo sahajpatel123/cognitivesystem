@@ -72,6 +72,10 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
   if [[ -f "$SCRIPT_DIR/../backend/tests/test_step8_ux_headers.py" ]]; then echo "step8_headers_test_present=1"; else echo "step8_headers_test_present=0"; fi
   if [[ -f "$SCRIPT_DIR/ux_gate.sh" ]]; then echo "ux_gate_present=1"; else echo "ux_gate_present=0"; fi
   if [[ -x "$SCRIPT_DIR/ux_gate.sh" ]]; then echo "ux_gate_executable=1"; else echo "ux_gate_executable=0"; fi
+  if [[ -f "$SCRIPT_DIR/../frontend/app/components/system-status/SystemStatus.tsx" ]]; then echo "step8b_system_status_present=1"; else echo "step8b_system_status_present=0"; fi
+  if [[ -f "$SCRIPT_DIR/../frontend/app/lib/ux_state.ts" ]]; then echo "step8b_ux_state_helper_present=1"; else echo "step8b_ux_state_helper_present=0"; fi
+  if [[ -f "$SCRIPT_DIR/ux_frontend_gate.sh" ]]; then echo "ux_frontend_gate_present=1"; else echo "ux_frontend_gate_present=0"; fi
+  if [[ -x "$SCRIPT_DIR/ux_frontend_gate.sh" ]]; then echo "ux_frontend_gate_executable=1"; else echo "ux_frontend_gate_executable=0"; fi
   bash -n "$SCRIPT_DIR/chaos_gate.sh"
   python3 -c "import backend.app.reliability.engine as e; print('step5_engine_ok=', hasattr(e,'run_step5'))"
   python3 -c "import backend.app.quality.gate as q; print('step5_quality_ok=', hasattr(q,'evaluate_quality'))"

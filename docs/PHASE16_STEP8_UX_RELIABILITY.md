@@ -44,3 +44,23 @@
 ## Client Expectations
 - Clients can render stable states (needs input, blocked, rate-limited, quota exceeded, degraded, error) without inspecting failure_reason.
 - Cooldown hints enable UX retry timers aligned with Retry-After.
+
+## Step 8B (Frontend UX Reliability Layer)
+- Consumes headers: X-UX-State, X-Cooldown-Seconds (optional), X-Request-Id from /api/chat responses.
+- UI SystemStatus strip renders title/body per UX state and shows cooldown countdown; aria-live="polite" for announcements.
+- Cooldown behavior: send input disabled while countdown > 0; countdown derived from clamped Retry-After (0..86400) using client clock.
+- Retry affordance: retry button available for ERROR/RATE_LIMITED/DEGRADED when provided; disabled during cooldown.
+- Request ID: displayed truncated (last 8 chars) with copy control for full value; no user_text/rendered_text shown.
+- Accessibility: buttons use disabled + aria-disabled; status region aria-live polite; mobile-responsive layout.
+
+## Non-goals (Step 8B)
+- No changes to routing, cognition, entitlements, safety, or backend decision logic.
+- Does not alter /api/chat schema (still {"user_text": "..."}).
+- Does not log or display user_text/rendered_text in status surfaces.
+
+## Verification Checklist (Step 8B)
+- Headers are read from /api/chat and mapped via normalizeUxState/clampCooldownSeconds.
+- Cooldown disables send and counts down to zero, then re-enables input.
+- SystemStatus renders correct copy per state and supports retry (when provided) respecting cooldown.
+- Request ID copy button copies full ID while showing truncated form.
+- Gate: scripts/ux_frontend_gate.sh present/executable; promotion_gate.sh reports Step 8B files.

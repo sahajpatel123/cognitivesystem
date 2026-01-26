@@ -244,3 +244,23 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
     - No logging of user_text or rendered_text in headers/events
   notes: "UX signaling is passive; routing/entitlements/safety unchanged; deterministic mapping and cooldown clamping (1..86400)."
 ```
+
+## Step 8B Evidence (Frontend UX Reliability Layer)
+```
+- date: 2026-01-26
+  type: step16.8b_frontend_ux_reliability
+  summary: "Frontend consumes X-UX-State/X-Cooldown-Seconds/X-Request-Id, shows SystemStatus banner with cooldown countdown, disables send during cooldown, retry affordance with request ID copy."
+  commands_local:
+    - python3 -m compileall backend mci_backend
+    - python3 -c "import backend.app.main; print('OK backend.app.main import')"
+    - bash -n scripts/promotion_gate.sh scripts/ux_frontend_gate.sh
+    - ./scripts/ux_frontend_gate.sh
+  commands_staging:
+    - MODE=staging BASE=$STAGING_BASE ./scripts/promotion_gate.sh
+    - curl -s -D - -o /dev/null -H "Content-Type: application/json" -d '{"user_text":"hi"}' "$STAGING_BASE/api/chat" | grep -E "^(X-UX-State|X-Cooldown-Seconds|X-Request-Id)"
+  expected_outcomes:
+    - Frontend maps UX headers to states deterministically; cooldown clamps 1..86400 and counts down client-side.
+    - Send input disabled during cooldown; SystemStatus shows titles/body per state; retry button respects cooldown.
+    - Request ID shown truncated with copy control; no user_text/rendered_text leaked.
+  notes: "Frontend layer is passive; no backend decision changes; UX signaling stable on mobile/desktop."
+```
