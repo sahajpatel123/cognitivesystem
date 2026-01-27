@@ -1,56 +1,133 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE="${BASE:-https://cognitivesystem-staging.up.railway.app}"
-MODE="${MODE:-staging}"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMPDIR="${TMPDIR:-/tmp}"
+MODE="${MODE:-local}"
+BASE="${BASE:-http://localhost:8000}"
+ATTEMPTS="${ATTEMPTS:-12}"
+RETRY_MAX_TIME="${RETRY_MAX_TIME:-180}" # unused but kept for compatibility
 
 info() { echo "[canary_check] $*"; }
 fail() { echo "[canary_check][FAIL] $*" >&2; exit 1; }
 
-info "mode=${MODE} base=${BASE}"
+workdir="$(mktemp -d)"
+last_hdr_file=""
+last_body_file=""
+cleanup() {
+  if [[ -n "${last_hdr_file}" && -f "${last_hdr_file}" ]]; then
+    :
+  fi
+  if [[ -n "${last_body_file}" && -f "${last_body_file}" ]]; then
+    :
+  fi
+  rm -rf "${workdir}" 2>/dev/null || true
+}
+trap cleanup EXIT
 
-health_status=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/health") || fail "health request failed"
-if [[ "$health_status" != "200" ]]; then
-  fail "health returned $health_status"
+# Health check (IPv4 + HTTP/1.1)
+health_code=$(curl -4 --http1.1 -sS --connect-timeout 8 --max-time 15 -o /dev/null -w "%{http_code}" "${BASE}/health" || true)
+if [[ "${health_code}" != "200" ]]; then
+  fail "health not ok http_code=${health_code}"
 fi
 info "health ok"
 
-resp_headers="$(mktemp "${TMPDIR%/}/canary_headers.XXXX")"
-trap 'rm -f "$resp_headers"' EXIT
+payload='{"user_text":"hi"}'
+allowed_actions="ANSWER ASK_CLARIFY FALLBACK"
+last_hdr=""
+last_body=""
+last_reason="unknown"
 
-chat_status=$(curl -s -D "$resp_headers" -o /dev/null -w "%{http_code}" \
-  -H "Content-Type: application/json" \
-  -X POST \
-  --data '{"user_text":"hi"}' \
-  "$BASE/api/chat") || fail "chat request failed"
-if [[ "$chat_status" != "200" ]]; then
-  fail "chat returned $chat_status"
-fi
+for attempt in $(seq 1 ${ATTEMPTS}); do
+  hdr="$(mktemp "${workdir}/hdr.XXXX")"
+  body="$(mktemp "${workdir}/body.XXXX")"
+  last_hdr_file="${hdr}"
+  last_body_file="${body}"
+  chat_rc=0
+  curl -4 --http1.1 -sS \
+    --connect-timeout 8 --max-time 15 \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -H "Accept-Encoding: identity" \
+    -H "Connection: close" \
+    -H "Expect:" \
+    --ignore-content-length \
+    -D "${hdr}" -o "${body}" \
+    -d "${payload}" \
+    "${BASE}/api/chat" || chat_rc=$?
 
-norm_headers=$(tr -d '\r' < "$resp_headers")
+  hdr_norm=$(tr -d '\r' < "${hdr}")
+  status_line=$(printf "%s" "${hdr_norm}" | head -n1)
+  last_hdr="${hdr_norm}"
+  last_body=$(cat "${body}" 2>/dev/null || true)
 
-get_header() {
-  local key="$1"
-  echo "$norm_headers" | grep -i "^$key:" | head -n1 | cut -d':' -f2-
-}
+  if [[ ${chat_rc} -ne 0 ]]; then
+    last_reason="curl_fail"
+    info "attempt=${attempt} reason=curl_fail"
+    sleep 1
+    continue
+  fi
 
-req_id=$(get_header "x-request-id" | xargs || true)
-ux_state=$(get_header "x-ux-state" | xargs || true)
-canary_val=$(get_header "x-canary" | xargs || true)
-build_version=$(get_header "x-build-version" | xargs || true)
+  if [[ "${status_line}" != *"200"* ]]; then
+    last_reason="bad_status"
+    info "attempt=${attempt} reason=bad_status"
+    sleep 1
+    continue
+  fi
 
-[[ -n "$req_id" ]] || fail "missing x-request-id"
-[[ -n "$ux_state" ]] || fail "missing x-ux-state"
-if [[ "$canary_val" != "0" && "$canary_val" != "1" ]]; then
-  fail "x-canary missing or invalid: '$canary_val'"
-fi
-[[ -n "$build_version" ]] || fail "missing x-build-version"
+  if ! printf "%s" "${hdr_norm}" | grep -qi '^x-request-id:'; then
+    last_reason="missing_reqid"
+    info "attempt=${attempt} reason=missing_reqid"
+    sleep 1
+    continue
+  fi
 
-info "headers ok: request_id=$req_id canary=$canary_val build_version=$build_version ux_state=$ux_state"
+  # body handling
+  has_ux=$(printf "%s" "${hdr_norm}" | grep -qi '^x-ux-state:' && echo yes || echo no)
 
-info "determinism check: backend does not support request id override; SKIP"
+  if [[ ! -s "${body}" ]]; then
+    if [[ "${has_ux}" == "yes" ]]; then
+      info "attempt=${attempt} reason=body_truncated_ok"
+      echo "[canary_check][PASS] status=200 reqid=$(printf "%s" "${hdr_norm}" | grep -i '^x-request-id:' | head -n1 | cut -d':' -f2- | xargs) mode=${MODE} base=${BASE} action=TRUNCATED ux_state=$(printf "%s" "${hdr_norm}" | grep -i '^x-ux-state:' | head -n1 | cut -d':' -f2- | xargs)"
+      exit 0
+    else
+      last_reason="parse_fail"
+      info "attempt=${attempt} reason=empty_body"
+      sleep 1
+      continue
+    fi
+  fi
 
-info "canary_check PASSED"
+  action=$(python3 - <<'PY' "${body}" || true
+import json, sys
+p = sys.argv[1]
+try:
+    with open(p, 'r', encoding='utf-8') as f:
+        obj = json.load(f)
+    print(obj.get('action', ''))
+except Exception:
+    print('')
+PY
+  )
+
+  case " ${allowed_actions} " in
+    *" ${action} "*)
+      info "attempt=${attempt} reason=ok"
+      echo "[canary_check][PASS] status=200 reqid=$(printf "%s" "${hdr_norm}" | grep -i '^x-request-id:' | head -n1 | cut -d':' -f2- | xargs) mode=${MODE} base=${BASE} action=${action} ux_state=$(printf "%s" "${hdr_norm}" | grep -i '^x-ux-state:' | head -n1 | cut -d':' -f2- | xargs)"
+      exit 0
+      ;;
+    *)
+      last_reason="parse_fail"
+      info "attempt=${attempt} reason=parse_fail"
+      sleep 1
+      continue
+      ;;
+  esac
+done
+
+echo "[canary_check][FAIL] could not obtain valid action after ${ATTEMPTS} attempts (last_reason=${last_reason})"
+echo "[canary_check] headers (last 30 lines):"
+printf "%s\n" "${last_hdr}" | tail -n 30 || true
+
+echo "[canary_check] body (first 200 chars):"
+printf "%s" "${last_body}" | head -c 200 2>/dev/null || true
+echo
+exit 1

@@ -299,3 +299,9 @@ python3 -c "import backend.app.main; print('OK backend.app.main import')"
 pytest -q backend/tests/test_step9_canary_determinism.py backend/tests/test_step9_flags_parsing.py
 bash -n scripts/promotion_gate.sh scripts/canary_check.sh
 ```
+
+Staging command: `MODE=staging BASE=$STAGING_BASE ./scripts/canary_check.sh`
+
+Notes: Canary gate accepts action ANSWER, ASK_CLARIFY, or FALLBACK as valid success responses.
+Additional note: Canary check forces HTTP/1.1 with retries to avoid HTTP/2 edge framing resets.
+Additional note: Canary gate tolerates curl(18)/edge truncation by using --ignore-content-length and passing via headers (x-request-id + x-ux-state) when body is missing.
