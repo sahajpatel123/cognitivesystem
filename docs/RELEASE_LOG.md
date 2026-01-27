@@ -305,3 +305,26 @@ Staging command: `MODE=staging BASE=$STAGING_BASE ./scripts/canary_check.sh`
 Notes: Canary gate accepts action ANSWER, ASK_CLARIFY, or FALLBACK as valid success responses.
 Additional note: Canary check forces HTTP/1.1 with retries to avoid HTTP/2 edge framing resets.
 Additional note: Canary gate tolerates curl(18)/edge truncation by using --ignore-content-length and passing via headers (x-request-id + x-ux-state) when body is missing.
+
+## Phase 16 — Step 10 Evidence (Certification & Lock)
+
+Evidence date: 2026-01-27  
+Scope: certification doc + promotion gate lock.
+
+Local verification (PASS):
+```bash
+python3 -m compileall -q backend mci_backend
+python3 -c "import backend.app.main; print('OK backend.app.main import')"
+bash -n scripts/promotion_gate.sh scripts/canary_check.sh
+bash -n scripts/canary_check.sh
+```
+
+Staging commands (run by operator):
+```bash
+MODE=staging BASE="https://cognitivesystem-staging.up.railway.app" ./scripts/promotion_gate.sh
+MODE=staging BASE="https://cognitivesystem-staging.up.railway.app" ./scripts/canary_check.sh
+```
+
+## Phase 16 — Step 10 Evidence (Certification & Lock)
+Evidence date: 2026-01-27  
+Scope: certification doc present + promotion gate lock.

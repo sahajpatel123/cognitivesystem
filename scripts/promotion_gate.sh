@@ -76,6 +76,13 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
   if [[ -f "$SCRIPT_DIR/../frontend/app/lib/ux_state.ts" ]]; then echo "step8b_ux_state_helper_present=1"; else echo "step8b_ux_state_helper_present=0"; fi
   if [[ -f "$SCRIPT_DIR/ux_frontend_gate.sh" ]]; then echo "ux_frontend_gate_present=1"; else echo "ux_frontend_gate_present=0"; fi
   if [[ -x "$SCRIPT_DIR/ux_frontend_gate.sh" ]]; then echo "ux_frontend_gate_executable=1"; else echo "ux_frontend_gate_executable=0"; fi
+  python3 -c "from backend.app.release import load_release_flags, decide_canary; print('step9_release_ok=', callable(load_release_flags) and callable(decide_canary))"
+  if [[ -f "$SCRIPT_DIR/../backend/tests/test_step9_canary_determinism.py" ]]; then echo "step9_canary_test_present=1"; else echo "step9_canary_test_present=0"; fi
+  if [[ -f "$SCRIPT_DIR/../backend/tests/test_step9_flags_parsing.py" ]]; then echo "step9_flags_test_present=1"; else echo "step9_flags_test_present=0"; fi
+  if [[ -f "$SCRIPT_DIR/canary_check.sh" ]]; then echo "canary_check_present=1"; else echo "canary_check_present=0"; fi
+  if [[ -x "$SCRIPT_DIR/canary_check.sh" ]]; then echo "canary_check_executable=1"; else echo "canary_check_executable=0"; fi
+  if [[ -f "$SCRIPT_DIR/../docs/PHASE16_STEP9_RELEASE_ENGINEERING.md" ]]; then echo "step9_doc_present=1"; else echo "step9_doc_present=0"; fi
+  if [[ -f "$SCRIPT_DIR/../docs/PHASE16_CERTIFICATION.md" ]]; then echo "phase16_cert_present=1"; else echo "phase16_cert_present=0"; echo "ERROR: missing docs/PHASE16_CERTIFICATION.md" >&2; exit 1; fi
   bash -n "$SCRIPT_DIR/chaos_gate.sh"
   python3 -c "import backend.app.reliability.engine as e; print('step5_engine_ok=', hasattr(e,'run_step5'))"
   python3 -c "import backend.app.quality.gate as q; print('step5_quality_ok=', hasattr(q,'evaluate_quality'))"
