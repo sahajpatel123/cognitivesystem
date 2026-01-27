@@ -285,3 +285,17 @@ Use this file to record promotions and rollbacks. Do not overwrite existing entr
     - "x-ux-state: ERROR"
   notes: "No schema/body changes; only header injection on 415; user_text/rendered_text not emitted."
 ```
+
+## Phase 16 — Step 9 Evidence (Release Engineering: Flags + Canary + Rollback)
+
+Evidence date: 2026-01-27  
+Scope: release flags (non-cognition), deterministic canary, canary gate script, promotion gate checks.
+
+### Local verification (PASS)
+Commands:
+```bash
+python3 -m compileall backend mci_backend
+python3 -c "import backend.app.main; print('OK backend.app.main import')"
+pytest -q backend/tests/test_step9_canary_determinism.py backend/tests/test_step9_flags_parsing.py
+bash -n scripts/promotion_gate.sh scripts/canary_check.sh
+```
