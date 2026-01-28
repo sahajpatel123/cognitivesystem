@@ -328,3 +328,12 @@ MODE=staging BASE="https://cognitivesystem-staging.up.railway.app" ./scripts/can
 ## Phase 16 — Step 10 Evidence (Certification & Lock)
 Evidence date: 2026-01-27  
 Scope: certification doc present + promotion gate lock.
+
+## Phase 16 — Step 10 Evidence (Certification & Lock)
+Evidence date: 2026-01-27  
+Commands (staging):
+- MODE=staging BASE=$STAGING_BASE ./scripts/promotion_gate.sh
+- BASE=$STAGING_BASE ./scripts/security_gate.sh
+- BASE=$STAGING_BASE ./scripts/ux_gate.sh
+- MODE=staging BASE=$STAGING_BASE ./scripts/canary_check.sh
+All PASS => Phase16 certified.
