@@ -346,3 +346,25 @@ Deliverables:
 - scripts/promotion_gate.sh updated with phase17_contract_present check
 - StopReason enum defined (9 codes: SUCCESS_COMPLETED, BUDGET_EXHAUSTED, PASS_LIMIT_REACHED, TIMEOUT, BREAKER_TRIPPED, ENTITLEMENT_CAP, ABUSE, VALIDATION_FAIL, INTERNAL_INCONSISTENCY)
 Status: Contract locked, gate enforced, no implementation yet.
+
+## Phase 17 — Step 9 Evidence (Eval Gates + Certification Freeze)
+Evidence date: 2026-01-28  
+Scope: Phase 17 frozen after Step 9; eval gates + certification doc added.
+Deliverables:
+- docs/PHASE17_CERTIFICATION.md created (version 17.9.0)
+  * Invariants documented with enforcement locations
+  * 4 evaluation gates defined with PASS/FAIL criteria
+  * Frozen components list
+  * Change control process
+- backend/tests/test_phase17_eval_gates.py created
+  * Gate A: Deterministic Replay (20 iterations)
+  * Gate B: Two-Strikes Downgrade (exactness)
+  * Gate C: StopReason Contract (exhaustive)
+  * Gate D: Telemetry Safety (no text leakage)
+- backend/tests/test_phase17_certification_freeze.py created
+  * Verifies certification artifacts exist
+  * Verifies doc content (version, invariants, gates, StopReasons)
+- scripts/promotion_gate.sh updated
+  * Added phase17_cert_present check (fail-closed)
+  * Added phase17_eval_gates_present check (fail-closed)
+Status: **Phase 17 FROZEN**. Changes to router/engine/validator/schema/telemetry require recertification.
