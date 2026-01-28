@@ -15,6 +15,7 @@ from backend.app.deepthink.router import Plan, StopReason
 from backend.app.deepthink.schema import PatchOp, DecisionDelta
 from backend.app.deepthink.validator import validate_delta
 from backend.app.deepthink.patch import apply_delta, PatchError
+from backend.app.deepthink.telemetry import compute_decision_signature, build_telemetry_event
 
 
 # Stop priority order (fixed, deterministic)
@@ -83,6 +84,7 @@ class EngineMeta:
     decision_signature: str
     pass_summaries: List[PassSummary] = field(default_factory=list)
     policy: Dict[str, Any] = field(default_factory=dict)
+    telemetry_event: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -154,6 +156,7 @@ def run_engine(engine_input: EngineInput) -> EngineOutput:
     validator_strikes = 0
     passes_executed = 0
     start_time_ms = context.now_ms()
+    applied_deltas: List[DecisionDelta] = []  # Track applied deltas for signature
     
     # Execute passes in order
     for pass_idx, pass_type in enumerate(plan.pass_plan):
@@ -177,6 +180,8 @@ def run_engine(engine_input: EngineInput) -> EngineOutput:
                 passes_executed=passes_executed,
                 request_signature=engine_input.request_signature,
                 plan=plan,
+                applied_deltas=applied_deltas,
+                context=context,
             )
         
         # Get per-pass budget and timeout
@@ -256,6 +261,7 @@ def run_engine(engine_input: EngineInput) -> EngineOutput:
             try:
                 current_state = apply_delta(current_state, pass_result.delta)
                 patch_applied = True
+                applied_deltas.extend(pass_result.delta)  # Track for signature
             except PatchError as e:
                 # Patch application failed -> treat as validation strike
                 validator_strikes += 1
@@ -303,6 +309,8 @@ def run_engine(engine_input: EngineInput) -> EngineOutput:
         passes_executed=passes_executed,
         request_signature=engine_input.request_signature,
         plan=plan,
+        applied_deltas=applied_deltas,
+        context=context,
     )
 
 
@@ -346,14 +354,31 @@ def _downgrade_output(
     plan: Plan,
     pass_summaries: List[PassSummary],
     validator_failures: int,
+    applied_deltas: Optional[List[DecisionDelta]] = None,
+    context: Optional[EngineContext] = None,
 ) -> EngineOutput:
     """
     Create downgraded output (return baseline state).
     """
-    decision_sig = _compute_decision_signature(
-        request_signature=request_signature,
-        plan=plan,
-        final_state=initial_state,
+    # Compute safe decision signature (no user text)
+    stable_inputs = _extract_stable_inputs(context) if context else {}
+    decision_sig = compute_decision_signature(
+        stable_inputs=stable_inputs,
+        pass_plan=plan.pass_plan,
+        deltas=applied_deltas or [],
+        meta={"validator_failures": validator_failures, "stop_reason": stop_reason},
+    )
+    
+    # Build telemetry event
+    final_action = initial_state.get("decision", {}).get("action", "")
+    telemetry_event = build_telemetry_event(
+        pass_count=len(pass_summaries),
+        stop_reason=stop_reason,
+        validator_failures=validator_failures,
+        downgraded=True,
+        decision_signature=decision_sig,
+        pass_summaries=pass_summaries,
+        final_action=final_action if final_action else None,
     )
     
     meta = EngineMeta(
@@ -364,6 +389,7 @@ def _downgrade_output(
         decision_signature=decision_sig,
         pass_summaries=pass_summaries,
         policy={"downgrade_reason": stop_reason},
+        telemetry_event=telemetry_event,
     )
     
     return EngineOutput(
@@ -381,14 +407,31 @@ def _finalize_output(
     passes_executed: int,
     request_signature: str,
     plan: Plan,
+    applied_deltas: List[DecisionDelta],
+    context: EngineContext,
 ) -> EngineOutput:
     """
-    Create final output with decision signature.
+    Create final output with safe decision signature (no user text).
     """
-    decision_sig = _compute_decision_signature(
-        request_signature=request_signature,
-        plan=plan,
-        final_state=final_state,
+    # Compute safe decision signature (no user text)
+    stable_inputs = _extract_stable_inputs(context)
+    decision_sig = compute_decision_signature(
+        stable_inputs=stable_inputs,
+        pass_plan=plan.pass_plan,
+        deltas=applied_deltas,
+        meta={"validator_failures": validator_failures, "stop_reason": stop_reason},
+    )
+    
+    # Build telemetry event
+    final_action = final_state.get("decision", {}).get("action", "")
+    telemetry_event = build_telemetry_event(
+        pass_count=passes_executed,
+        stop_reason=stop_reason,
+        validator_failures=validator_failures,
+        downgraded=downgraded,
+        decision_signature=decision_sig,
+        pass_summaries=pass_summaries,
+        final_action=final_action if final_action else None,
     )
     
     meta = EngineMeta(
@@ -402,6 +445,7 @@ def _finalize_output(
             "plan_pass_count": plan.effective_pass_count,
             "executed_pass_count": passes_executed,
         },
+        telemetry_event=telemetry_event,
     )
     
     return EngineOutput(
@@ -410,32 +454,17 @@ def _finalize_output(
     )
 
 
-def _compute_decision_signature(
-    request_signature: str,
-    plan: Plan,
-    final_state: Dict[str, Any],
-) -> str:
+def _extract_stable_inputs(context: EngineContext) -> Dict[str, Any]:
     """
-    Compute deterministic decision signature.
-    
-    Depends on:
-    - request_signature
-    - plan summary (pass_plan, budgets, timeouts)
-    - final state (safe fields only)
-    
-    Returns SHA256 hex digest.
+    Extract safe stable inputs from context (no user text).
     """
-    sig_data = {
-        "request_signature": request_signature,
-        "plan_pass_count": plan.effective_pass_count,
-        "plan_passes": plan.pass_plan,
-        "plan_budgets": plan.per_pass_budget,
-        "plan_timeouts": plan.per_pass_timeout_ms,
-        "final_state": final_state,
+    stable_inputs = {
+        "budget_units_remaining": context.budget_units_remaining,
+        "breaker_tripped": context.breaker_tripped,
+        "abuse_blocked": context.abuse_blocked,
     }
     
-    # Deterministic JSON serialization
-    sig_json = json.dumps(sig_data, sort_keys=True, separators=(',', ':'))
-    sig_hash = hashlib.sha256(sig_json.encode('utf-8')).hexdigest()
+    # Note: request_signature is excluded as it may contain text
+    # Only include truly text-free fields
     
-    return sig_hash
+    return stable_inputs
