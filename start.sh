@@ -2,6 +2,11 @@
 set -euo pipefail
 export PYTHONUNBUFFERED=1
 
+if [ -d "/app/.venv/bin" ]; then
+export VIRTUAL_ENV="/app/.venv"
+export PATH="/app/.venv/bin:$PATH"
+fi
+
 python3 -V
 python3 -m pip -V
 
