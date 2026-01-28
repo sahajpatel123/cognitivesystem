@@ -83,6 +83,7 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
   if [[ -x "$SCRIPT_DIR/canary_check.sh" ]]; then echo "canary_check_executable=1"; else echo "canary_check_executable=0"; fi
   if [[ -f "$SCRIPT_DIR/../docs/PHASE16_STEP9_RELEASE_ENGINEERING.md" ]]; then echo "step9_doc_present=1"; else echo "step9_doc_present=0"; fi
   if [[ -f "$SCRIPT_DIR/../docs/PHASE16_CERTIFICATION.md" ]]; then echo "phase16_cert_present=1"; else echo "phase16_cert_present=0"; echo "ERROR: missing docs/PHASE16_CERTIFICATION.md" >&2; exit 1; fi
+  if [[ -f "$SCRIPT_DIR/../docs/PHASE17_DEEP_THINKING_CONTRACT.md" ]]; then echo "phase17_contract_present=1"; else echo "phase17_contract_present=0"; echo "ERROR: missing docs/PHASE17_DEEP_THINKING_CONTRACT.md" >&2; exit 1; fi
   bash -n "$SCRIPT_DIR/chaos_gate.sh"
   python3 -c "import backend.app.reliability.engine as e; print('step5_engine_ok=', hasattr(e,'run_step5'))"
   python3 -c "import backend.app.quality.gate as q; print('step5_quality_ok=', hasattr(q,'evaluate_quality'))"

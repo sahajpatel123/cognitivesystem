@@ -337,3 +337,12 @@ Commands (staging):
 - BASE=$STAGING_BASE ./scripts/ux_gate.sh
 - MODE=staging BASE=$STAGING_BASE ./scripts/canary_check.sh
 All PASS => Phase16 certified.
+
+## Phase 17 — Step 0 Evidence (Deep Thinking Contract + Stop Rules)
+Evidence date: 2026-01-28  
+Scope: Phase 17 Deep Thinking Contract frozen; added gate presence check.
+Deliverables:
+- docs/PHASE17_DEEP_THINKING_CONTRACT.md created with hard-locked invariants
+- scripts/promotion_gate.sh updated with phase17_contract_present check
+- StopReason enum defined (9 codes: SUCCESS_COMPLETED, BUDGET_EXHAUSTED, PASS_LIMIT_REACHED, TIMEOUT, BREAKER_TRIPPED, ENTITLEMENT_CAP, ABUSE, VALIDATION_FAIL, INTERNAL_INCONSISTENCY)
+Status: Contract locked, gate enforced, no implementation yet.
