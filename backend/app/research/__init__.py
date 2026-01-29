@@ -1,7 +1,7 @@
 """
-Phase 18 Step 2: Research Sandbox and Rate Limiting
+Phase 18 Research: Sandbox, Rate Limiting, and Credibility Grading
 
-Deterministic, fail-closed sandbox wrapper for tool calls.
+Deterministic, fail-closed components for research mode.
 """
 
 from backend.app.research.ratelimit import (
@@ -15,6 +15,12 @@ from backend.app.research.sandbox import (
     SandboxResult,
     run_sandboxed_call,
 )
+from backend.app.research.credibility import (
+    CredibilityReport,
+    GradedSource,
+    grade_sources,
+    CREDIBILITY_MODEL_VERSION,
+)
 
 __all__ = [
     "RateLimitConfig",
@@ -24,4 +30,8 @@ __all__ = [
     "SandboxState",
     "SandboxResult",
     "run_sandboxed_call",
+    "CredibilityReport",
+    "GradedSource",
+    "grade_sources",
+    "CREDIBILITY_MODEL_VERSION",
 ]
