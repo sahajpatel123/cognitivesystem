@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+.venv
+venv
+env
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+.tox
+.hypothesis
+
+# Node
+node_modules
+frontend/node_modules
+.next
+dist
+build
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Misc
+coverage
+*.md
+!README.md
+docs
