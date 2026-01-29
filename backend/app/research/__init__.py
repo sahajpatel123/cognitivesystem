@@ -1,5 +1,5 @@
 """
-Phase 18 Research: Sandbox, Rate Limiting, Credibility, Citations, and Injection Defense
+Phase 18 Research: Sandbox, Rate Limiting, Credibility, Citations, Injection Defense, and Cache/Dedup
 
 Deterministic, fail-closed components for research mode.
 """
@@ -41,6 +41,16 @@ from backend.app.research.injection_defense import (
     sanitize_tool_output,
     INJECTION_MODEL_VERSION,
 )
+from backend.app.research.cache import (
+    ResearchCache,
+    CacheKeyParts,
+    make_cache_key,
+    canonicalize_query,
+    canonicalize_url,
+)
+from backend.app.research.dedup import (
+    dedup_bundles,
+)
 
 __all__ = [
     "RateLimitConfig",
@@ -68,4 +78,10 @@ __all__ = [
     "SanitizerResult",
     "sanitize_tool_output",
     "INJECTION_MODEL_VERSION",
+    "ResearchCache",
+    "CacheKeyParts",
+    "make_cache_key",
+    "canonicalize_query",
+    "canonicalize_url",
+    "dedup_bundles",
 ]
