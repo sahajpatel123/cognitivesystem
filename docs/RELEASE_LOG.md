@@ -368,3 +368,21 @@ Deliverables:
   * Added phase17_cert_present check (fail-closed)
   * Added phase17_eval_gates_present check (fail-closed)
 Status: **Phase 17 FROZEN**. Changes to router/engine/validator/schema/telemetry require recertification.
+
+## Phase 18 — Step 0 Evidence (Research Contract + Stop Rules)
+Evidence date: 2026-01-29  
+Scope: Phase 18 Research Contract frozen; added gate presence + content validation checks.
+Deliverables:
+- docs/PHASE18_RESEARCH_CONTRACT.md created (version 18.0.0)
+  * 6 hard-lock invariants: Tool Boundary, No-Source→UNKNOWN, Policy Caps, Injection Policy, Non-Agentic, Fail-Closed
+  * 11 ResearchStopReasons (exhaustive): SUCCESS_COMPLETED, ENTITLEMENT_CAP, POLICY_DISABLED, BUDGET_EXHAUSTED, RATE_LIMITED, TIMEOUT, SANDBOX_VIOLATION, INJECTION_DETECTED, NO_SOURCE, VALIDATION_FAIL, INTERNAL_INCONSISTENCY
+  * Stop priority order (deterministic, 11 levels)
+  * No-Source handling rule (mechanical: force ASK_CLARIFY or UNKNOWN)
+  * PolicyCaps definitions (max_tool_calls_total, max_tool_calls_per_minute, per_call_timeout_ms, total_research_timeout_ms, budget_units_clamp)
+  * Change control process
+- scripts/promotion_gate.sh updated
+  * Added phase18_contract_present check (fail-closed)
+  * Added ContractVersion "18.0.0" validation (grep check)
+  * Added Status: FROZEN validation (grep check)
+  * Added ResearchStopReasons section validation (grep check)
+Status: **CONTRACT FROZEN**. Implementation Steps 18.1–18.9 must comply. No research code added yet.

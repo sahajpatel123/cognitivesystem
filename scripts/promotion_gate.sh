@@ -86,6 +86,25 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
   if [[ -f "$SCRIPT_DIR/../docs/PHASE17_DEEP_THINKING_CONTRACT.md" ]]; then echo "phase17_contract_present=1"; else echo "phase17_contract_present=0"; echo "ERROR: missing docs/PHASE17_DEEP_THINKING_CONTRACT.md" >&2; exit 1; fi
   if [[ -f "$SCRIPT_DIR/../docs/PHASE17_CERTIFICATION.md" ]]; then echo "phase17_cert_present=1"; else echo "phase17_cert_present=0"; echo "ERROR: missing docs/PHASE17_CERTIFICATION.md" >&2; exit 1; fi
   if [[ -f "$SCRIPT_DIR/../backend/tests/test_phase17_eval_gates.py" ]]; then echo "phase17_eval_gates_present=1"; else echo "phase17_eval_gates_present=0"; echo "ERROR: missing backend/tests/test_phase17_eval_gates.py" >&2; exit 1; fi
+  if [[ -f "$SCRIPT_DIR/../docs/PHASE18_RESEARCH_CONTRACT.md" ]]; then
+    echo "phase18_contract_present=1"
+    if ! grep -q 'ContractVersion.*"18.0.0"' "$SCRIPT_DIR/../docs/PHASE18_RESEARCH_CONTRACT.md"; then
+      echo "ERROR: PHASE18_RESEARCH_CONTRACT.md missing ContractVersion 18.0.0" >&2
+      exit 1
+    fi
+    if ! grep -q 'Status.*FROZEN' "$SCRIPT_DIR/../docs/PHASE18_RESEARCH_CONTRACT.md"; then
+      echo "ERROR: PHASE18_RESEARCH_CONTRACT.md missing Status: FROZEN" >&2
+      exit 1
+    fi
+    if ! grep -q 'RESEARCH STOP REASONS' "$SCRIPT_DIR/../docs/PHASE18_RESEARCH_CONTRACT.md"; then
+      echo "ERROR: PHASE18_RESEARCH_CONTRACT.md missing ResearchStopReasons section" >&2
+      exit 1
+    fi
+  else
+    echo "phase18_contract_present=0"
+    echo "ERROR: missing docs/PHASE18_RESEARCH_CONTRACT.md" >&2
+    exit 1
+  fi
   bash -n "$SCRIPT_DIR/chaos_gate.sh"
   python3 -c "import backend.app.reliability.engine as e; print('step5_engine_ok=', hasattr(e,'run_step5'))"
   python3 -c "import backend.app.quality.gate as q; print('step5_quality_ok=', hasattr(q,'evaluate_quality'))"
