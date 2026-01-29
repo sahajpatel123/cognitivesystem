@@ -1,5 +1,5 @@
 """
-Phase 18 Research: Sandbox, Rate Limiting, and Credibility Grading
+Phase 18 Research: Sandbox, Rate Limiting, Credibility, and Citations
 
 Deterministic, fail-closed components for research mode.
 """
@@ -21,6 +21,18 @@ from backend.app.research.credibility import (
     grade_sources,
     CREDIBILITY_MODEL_VERSION,
 )
+from backend.app.research.citations import (
+    CitationRef,
+    make_citation_ref,
+    normalize_url,
+    extract_domain,
+)
+from backend.app.research.claim_binder import (
+    Claim,
+    BinderOutput,
+    bind_claims_and_citations,
+    extract_claims,
+)
 
 __all__ = [
     "RateLimitConfig",
@@ -34,4 +46,12 @@ __all__ = [
     "GradedSource",
     "grade_sources",
     "CREDIBILITY_MODEL_VERSION",
+    "CitationRef",
+    "make_citation_ref",
+    "normalize_url",
+    "extract_domain",
+    "Claim",
+    "BinderOutput",
+    "bind_claims_and_citations",
+    "extract_claims",
 ]
