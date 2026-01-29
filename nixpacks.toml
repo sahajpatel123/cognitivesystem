@@ -1,4 +1,5 @@
 [phases.setup]
+nixpkgsArchive = "5148520bfab61f99fd25fb9ff7bfbb50dad3c9db"
 nixPkgs = ["python312", "python312Packages.virtualenv", "python312Packages.setuptools", "python312Packages.wheel", "nodejs_20"]
 
 [phases.install]
