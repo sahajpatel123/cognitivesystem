@@ -1,5 +1,5 @@
 """
-Phase 18 Research: Sandbox, Rate Limiting, Credibility, and Citations
+Phase 18 Research: Sandbox, Rate Limiting, Credibility, Citations, and Injection Defense
 
 Deterministic, fail-closed components for research mode.
 """
@@ -33,6 +33,14 @@ from backend.app.research.claim_binder import (
     bind_claims_and_citations,
     extract_claims,
 )
+from backend.app.research.injection_defense import (
+    InjectionFlag,
+    SanitizerConfig,
+    SanitizerEvent,
+    SanitizerResult,
+    sanitize_tool_output,
+    INJECTION_MODEL_VERSION,
+)
 
 __all__ = [
     "RateLimitConfig",
@@ -54,4 +62,10 @@ __all__ = [
     "BinderOutput",
     "bind_claims_and_citations",
     "extract_claims",
+    "InjectionFlag",
+    "SanitizerConfig",
+    "SanitizerEvent",
+    "SanitizerResult",
+    "sanitize_tool_output",
+    "INJECTION_MODEL_VERSION",
 ]
