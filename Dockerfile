@@ -26,12 +26,14 @@ WORKDIR /app
 # Create Python virtual environment
 RUN python3 -m venv /app/.venv
 
-# Copy requirements first for layer caching
+# Copy requirements files first for layer caching
+# Root requirements.txt references backend/requirements.txt via -r directive
 COPY requirements.txt /app/requirements.txt
+COPY backend/requirements.txt /app/backend/requirements.txt
 
 # Install Python dependencies inside venv
 RUN /app/.venv/bin/python -m pip install --upgrade pip setuptools wheel && \
-    /app/.venv/bin/python -m pip install -r requirements.txt
+    /app/.venv/bin/python -m pip install -r /app/requirements.txt
 
 # Copy entire repository
 COPY . /app
