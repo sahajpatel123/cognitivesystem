@@ -51,6 +51,13 @@ from backend.app.research.cache import (
 from backend.app.research.dedup import (
     dedup_bundles,
 )
+from backend.app.research.telemetry import (
+    ResearchTelemetryEvent,
+    build_research_telemetry_event,
+    compute_research_signature,
+    sanitize_event,
+    FORBIDDEN_KEYS,
+)
 
 __all__ = [
     "RateLimitConfig",
@@ -84,4 +91,9 @@ __all__ = [
     "canonicalize_query",
     "canonicalize_url",
     "dedup_bundles",
+    "ResearchTelemetryEvent",
+    "build_research_telemetry_event",
+    "compute_research_signature",
+    "sanitize_event",
+    "FORBIDDEN_KEYS",
 ]
