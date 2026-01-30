@@ -445,6 +445,24 @@ if __name__ == "__main__":
             ],
         )
         
+        # Gate F: Integration Wiring (Policy Caps + Determinism)
+        # Fail-closed: if import or runner fails, gate fails
+        print("Gate F: Integration Wiring (Policy Caps + Determinism)")
+        try:
+            from backend.tests import test_phase18_integration_policy_caps
+            # Suppress print output during gate run by redirecting stdout
+            import io
+            old_stdout = sys.stdout
+            sys.stdout = io.StringIO()
+            try:
+                test_phase18_integration_policy_caps.run_all()
+            finally:
+                sys.stdout = old_stdout
+            print("✓ Gate F: Integration Wiring (Policy Caps + Determinism)")
+        except Exception as gate_f_exc:
+            print(f"FAIL: Gate F failed: {gate_f_exc}")
+            raise AssertionError(f"Gate F: Integration Wiring failed: {gate_f_exc}") from gate_f_exc
+        
     except Exception as exc:
         print("FAIL:", exc)
         sys.exit(1)
