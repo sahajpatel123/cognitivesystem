@@ -105,6 +105,13 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
     echo "ERROR: missing docs/PHASE18_RESEARCH_CONTRACT.md" >&2
     exit 1
   fi
+  if [[ -f "$SCRIPT_DIR/../backend/tests/test_phase18_eval_gates.py" ]]; then
+    echo "phase18_eval_gates_present=1"
+  else
+    echo "phase18_eval_gates_present=0"
+    echo "ERROR: missing backend/tests/test_phase18_eval_gates.py" >&2
+    exit 1
+  fi
   bash -n "$SCRIPT_DIR/chaos_gate.sh"
   python3 -c "import backend.app.reliability.engine as e; print('step5_engine_ok=', hasattr(e,'run_step5'))"
   python3 -c "import backend.app.quality.gate as q; print('step5_quality_ok=', hasattr(q,'evaluate_quality'))"
