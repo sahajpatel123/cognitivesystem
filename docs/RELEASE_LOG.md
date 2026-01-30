@@ -386,3 +386,26 @@ Deliverables:
   * Added Status: FROZEN validation (grep check)
   * Added ResearchStopReasons section validation (grep check)
 Status: **CONTRACT FROZEN**. Implementation Steps 18.1–18.9 must comply. No research code added yet.
+
+## Phase 19 — Step 0 Evidence (Memory Contract + Stop Rules)
+Evidence date: 2026-01-30  
+Scope: Phase 19 Memory Contract frozen; added gate presence + content validation checks.
+Deliverables:
+- docs/PHASE19_MEMORY_CONTRACT.md created (version 19.0.0)
+  * 5 allowed memory categories (strict allowlist): PREFERENCE, WORKFLOW_DEFAULT, PROJECT_CONFIG, CONSTRAINT, REMINDER
+  * 9 forbidden categories (hard block): Identity Traits, Health Information, Intimate Life, Criminal/Legal, Location Data, Credentials/Secrets, Biometrics/IDs, Inferred Profiling, Tool-Output Memory
+  * 13 MemoryStopReasons (exhaustive): SUCCESS_STORED, SUCCESS_UPDATED, SUCCESS_DELETED, POLICY_DISABLED, ENTITLEMENT_CAP, FORBIDDEN_CATEGORY, MISSING_EXPLICIT_CONSENT, NO_SOURCE_DERIVED_FACT, INJECTION_DETECTED, SCHEMA_INVALID, BOUNDS_EXCEEDED, TTL_NOT_ALLOWED, INTERNAL_INCONSISTENCY
+  * Stop priority order (deterministic, 11 levels)
+  * NO SOURCE → DON'T STORE rule (mechanical: DERIVED_UNVERIFIED always rejected)
+  * SourceKind definitions: USER_EXPLICIT, SYSTEM_KNOWN, CITED_SOURCE, DERIVED_UNVERIFIED
+  * 8 hard-lock invariants
+  * Change control process
+- scripts/promotion_gate.sh updated
+  * Added phase19_contract_present check (fail-closed)
+  * Added ContractVersion "19.0.0" validation (grep check)
+  * Added Status: FROZEN validation (grep check)
+  * Added MEMORY STOP REASONS section validation (grep check)
+  * Added ALLOWED MEMORY CATEGORIES section validation (grep check)
+  * Added FORBIDDEN CATEGORIES section validation (grep check)
+  * Added NO SOURCE → DON'T STORE rule validation (grep check)
+Status: **CONTRACT FROZEN**. Governance only, no runtime code. Implementation Steps 19.1+ must comply.

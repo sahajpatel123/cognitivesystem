@@ -112,6 +112,39 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
     echo "ERROR: missing backend/tests/test_phase18_eval_gates.py" >&2
     exit 1
   fi
+  # Phase 19 Memory Contract checks (fail-closed)
+  if [[ -f "$SCRIPT_DIR/../docs/PHASE19_MEMORY_CONTRACT.md" ]]; then
+    echo "phase19_contract_present=1"
+    if ! grep -q 'ContractVersion.*"19.0.0"' "$SCRIPT_DIR/../docs/PHASE19_MEMORY_CONTRACT.md"; then
+      echo "ERROR: PHASE19_MEMORY_CONTRACT.md missing ContractVersion 19.0.0" >&2
+      exit 1
+    fi
+    if ! grep -q 'Status.*FROZEN' "$SCRIPT_DIR/../docs/PHASE19_MEMORY_CONTRACT.md"; then
+      echo "ERROR: PHASE19_MEMORY_CONTRACT.md missing Status: FROZEN" >&2
+      exit 1
+    fi
+    if ! grep -q 'MEMORY STOP REASONS' "$SCRIPT_DIR/../docs/PHASE19_MEMORY_CONTRACT.md"; then
+      echo "ERROR: PHASE19_MEMORY_CONTRACT.md missing MEMORY STOP REASONS section" >&2
+      exit 1
+    fi
+    if ! grep -q 'ALLOWED MEMORY CATEGORIES' "$SCRIPT_DIR/../docs/PHASE19_MEMORY_CONTRACT.md"; then
+      echo "ERROR: PHASE19_MEMORY_CONTRACT.md missing ALLOWED MEMORY CATEGORIES section" >&2
+      exit 1
+    fi
+    if ! grep -q 'FORBIDDEN CATEGORIES' "$SCRIPT_DIR/../docs/PHASE19_MEMORY_CONTRACT.md"; then
+      echo "ERROR: PHASE19_MEMORY_CONTRACT.md missing FORBIDDEN CATEGORIES section" >&2
+      exit 1
+    fi
+    if ! grep -q "NO SOURCE.*DON'T STORE" "$SCRIPT_DIR/../docs/PHASE19_MEMORY_CONTRACT.md"; then
+      echo "ERROR: PHASE19_MEMORY_CONTRACT.md missing NO SOURCE -> DON'T STORE rule" >&2
+      exit 1
+    fi
+    echo "phase19_contract_valid=1"
+  else
+    echo "phase19_contract_present=0"
+    echo "ERROR: missing docs/PHASE19_MEMORY_CONTRACT.md" >&2
+    exit 1
+  fi
   bash -n "$SCRIPT_DIR/chaos_gate.sh"
   python3 -c "import backend.app.reliability.engine as e; print('step5_engine_ok=', hasattr(e,'run_step5'))"
   python3 -c "import backend.app.quality.gate as q; print('step5_quality_ok=', hasattr(q,'evaluate_quality'))"
