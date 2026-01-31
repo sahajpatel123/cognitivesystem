@@ -62,6 +62,80 @@ class TestResult:
         return f"{status}: {self.passed}/{total} passed"
 
 # ============================================================================
+# MOCK AUDIT SINK FOR DETERMINISTIC CHAIN SIGNATURES
+# ============================================================================
+
+class MockAuditSink:
+    """Deterministic in-memory audit sink that mimics governance.audit behavior."""
+    
+    def __init__(self):
+        self.events = []  # Append-only list
+        self.chain_signature = "GENESIS"  # Initial chain state
+    
+    def append(self, event_struct: Dict[str, Any]) -> str:
+        """
+        Append event to chain and return new chain signature.
+        Mimics governance.audit append-only + chain-signed behavior.
+        """
+        # Sanitize event structure (no raw text)
+        sanitized_event = self._sanitize_event(event_struct)
+        
+        # Compute event hash
+        event_json = canonical_json(sanitized_event)
+        event_hash = sha256_hash(event_json)[:16]
+        
+        # Compute new chain signature
+        chain_data = f"{self.chain_signature}:{event_hash}"
+        new_chain_sig = sha256_hash(chain_data)[:16]
+        
+        # Append to chain
+        self.events.append({
+            "event": sanitized_event,
+            "event_hash": event_hash,
+            "chain_sig": new_chain_sig
+        })
+        
+        self.chain_signature = new_chain_sig
+        return new_chain_sig
+    
+    def _sanitize_event(self, event_struct: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitize event to structure-only fields."""
+        sanitized = {}
+        for k, v in event_struct.items():
+            if detect_sentinel(str(v)):
+                continue  # Drop sentinel fields
+            if isinstance(v, (str, int, float, bool)):
+                sanitized[k] = v
+            elif isinstance(v, (list, tuple)):
+                sanitized[k] = len(v)
+            elif isinstance(v, dict):
+                sanitized[k] = self._sanitize_event(v)
+        return sanitized
+    
+    def verify_chain(self) -> bool:
+        """Verify chain integrity by recomputing signatures."""
+        current_sig = "GENESIS"
+        for event_record in self.events:
+            expected_chain_data = f"{current_sig}:{event_record['event_hash']}"
+            expected_sig = sha256_hash(expected_chain_data)[:16]
+            if event_record['chain_sig'] != expected_sig:
+                return False
+            current_sig = event_record['chain_sig']
+        return current_sig == self.chain_signature
+    
+    def get_current_signature(self) -> str:
+        """Get current chain signature."""
+        return self.chain_signature
+
+# Global mock audit sink for tests
+_test_audit_sink = MockAuditSink()
+
+def reset_test_audit_sink():
+    """Reset the global audit sink for clean test runs."""
+    global _test_audit_sink
+    _test_audit_sink = MockAuditSink()
+
+# ============================================================================
 # MOCK STORE FOR MEMORY TESTS
 # ============================================================================
 
@@ -90,7 +164,8 @@ def test_gate1_tool_no_bypass(result: TestResult):
         region="us-east-1",
         query="test query",
         allowed_tools=["web_search"],
-        request_flags={}
+        request_flags={},
+        audit_sink=_test_audit_sink
     )
     
     result.assert_false(outcome.ok, "Tool call should be denied for denied tenant")
@@ -109,7 +184,8 @@ def test_gate1_tool_no_bypass(result: TestResult):
         region="us-east-1",
         query="test query",
         allowed_tools=["web_search"],
-        request_flags={}
+        request_flags={},
+        audit_sink=_test_audit_sink
     )
     
     result.assert_equal(outcome.outcome_signature, outcome2.outcome_signature,
@@ -144,7 +220,8 @@ def test_gate2_memory_no_bypass(result: TestResult):
         tenant_id="test_tenant_denied",
         region="us-east-1",
         facts_data=facts_data,
-        origin="phase17"
+        origin="phase17",
+        audit_sink=_test_audit_sink
     )
     
     result.assert_false(outcome.ok, "Memory write should be denied for denied tenant")
@@ -156,7 +233,8 @@ def test_gate2_memory_no_bypass(result: TestResult):
     read_outcome = governed_memory_read_request(
         tenant_id="test_tenant_denied",
         region="us-east-1",
-        read_request=read_req
+        read_request=read_req,
+        audit_sink=_test_audit_sink
     )
     
     result.assert_false(read_outcome.ok, "Memory read should be denied for denied tenant")
@@ -190,7 +268,8 @@ def test_gate3_research_citation_enforcement(result: TestResult):
         tenant_id="test_tenant_allowed",
         region="us-east-1",
         facts_data=research_facts,
-        origin="phase18"
+        origin="phase18",
+        audit_sink=_test_audit_sink
     )
     
     result.assert_false(outcome.ok, "Research fact without citations should be denied")
@@ -217,7 +296,8 @@ def test_gate3_research_citation_enforcement(result: TestResult):
         tenant_id="test_tenant_allowed",
         region="us-east-1",
         facts_data=research_facts_with_citations,
-        origin="phase18"
+        origin="phase18",
+        audit_sink=_test_audit_sink
     )
     
     # Should not fail due to citations (may fail due to tenant policy)
@@ -253,14 +333,16 @@ def test_gate4_ttl_clamp_enforcement(result: TestResult):
         tenant_id="test_tenant_free",
         region="us-east-1",
         facts_data=facts_data,
-        origin="phase17"
+        origin="phase17",
+        audit_sink=_test_audit_sink
     )
     
     outcome2 = governed_memory_write_request(
         tenant_id="test_tenant_free",
         region="us-east-1",
         facts_data=facts_data,
-        origin="phase17"
+        origin="phase17",
+        audit_sink=_test_audit_sink
     )
     
     # TTL clamping should be deterministic
@@ -303,7 +385,8 @@ def test_gate5_determinism_replay(result: TestResult):
             region=base_request["region"],
             query=base_request["query"],
             allowed_tools=shuffled_tools,
-            request_flags=shuffled_flags
+            request_flags=shuffled_flags,
+            audit_sink=_test_audit_sink
         )
         
         signatures.append(outcome.outcome_signature)
@@ -331,7 +414,8 @@ def test_gate6_telemetry_clamp_sentinel(result: TestResult):
     outcome = governed_telemetry_emit(
         tenant_id="test_tenant_telemetry",
         region="us-east-1",
-        telemetry_data=normal_telemetry
+        telemetry_data=normal_telemetry,
+        audit_sink=_test_audit_sink
     )
     
     # Should have outcome signature
@@ -347,7 +431,8 @@ def test_gate6_telemetry_clamp_sentinel(result: TestResult):
     sentinel_outcome = governed_telemetry_emit(
         tenant_id="test_tenant_telemetry",
         region="us-east-1",
-        telemetry_data=sentinel_telemetry
+        telemetry_data=sentinel_telemetry,
+        audit_sink=_test_audit_sink
     )
     
     # Should be denied due to sentinel detection
@@ -370,11 +455,11 @@ def test_gate7_audit_append_chain(result: TestResult):
     # Test multiple operations to build audit chain
     operations = [
         ("tool_call", lambda: governed_tool_call_request(
-            "test_tenant_audit", "us-east-1", "test", ["web_search"], {})),
+            "test_tenant_audit", "us-east-1", "test", ["web_search"], {}, audit_sink=_test_audit_sink)),
         ("memory_write", lambda: governed_memory_write_request(
-            "test_tenant_audit", "us-east-1", {"memory_patch": []}, "phase17")),
+            "test_tenant_audit", "us-east-1", {"memory_patch": []}, "phase17", audit_sink=_test_audit_sink)),
         ("telemetry", lambda: governed_telemetry_emit(
-            "test_tenant_audit", "us-east-1", {"event": "test"}))
+            "test_tenant_audit", "us-east-1", {"event": "test"}, audit_sink=_test_audit_sink))
     ]
     
     audit_signatures = []
@@ -388,8 +473,8 @@ def test_gate7_audit_append_chain(result: TestResult):
                           f"{op_name} should have audit signature")
     
     # Audit signatures should be deterministic for same operations
-    outcome1 = governed_tool_call_request("test_tenant_audit", "us-east-1", "test", ["web_search"], {})
-    outcome2 = governed_tool_call_request("test_tenant_audit", "us-east-1", "test", ["web_search"], {})
+    outcome1 = governed_tool_call_request("test_tenant_audit", "us-east-1", "test", ["web_search"], {}, audit_sink=_test_audit_sink)
+    outcome2 = governed_tool_call_request("test_tenant_audit", "us-east-1", "test", ["web_search"], {}, audit_sink=_test_audit_sink)
     
     result.assert_equal(outcome1.audit_signature, outcome2.audit_signature,
                        "Identical operations should have identical audit signatures")
@@ -408,7 +493,8 @@ def test_gate8_fail_closed_invalid(result: TestResult):
         region="us-east-1",
         query="test",
         allowed_tools=["web_search"],
-        request_flags={}
+        request_flags={},
+        audit_sink=_test_audit_sink
     )
     
     result.assert_false(invalid_tenant_outcome.ok, "Empty tenant ID should be denied")
@@ -423,7 +509,8 @@ def test_gate8_fail_closed_invalid(result: TestResult):
         region="",  # Empty region
         query="test",
         allowed_tools=["web_search"],
-        request_flags={}
+        request_flags={},
+        audit_sink=_test_audit_sink
     )
     
     result.assert_false(invalid_region_outcome.ok, "Empty region should be denied")
@@ -433,7 +520,8 @@ def test_gate8_fail_closed_invalid(result: TestResult):
         tenant_id="test_tenant",
         region="us-east-1",
         facts_data=None,  # Invalid facts data
-        origin="phase17"
+        origin="phase17",
+        audit_sink=_test_audit_sink
     )
     
     result.assert_false(malformed_memory_outcome.ok, "Malformed memory request should be denied")
@@ -448,9 +536,9 @@ def scan_all_outputs_for_sentinels(result: TestResult):
     
     # Test various operations and scan their outputs
     test_operations = [
-        governed_tool_call_request("test", "us-east-1", "SENSITIVE_USER_TEXT_123", ["web"], {}),
-        governed_memory_write_request("test", "us-east-1", {"patch": []}, "phase17"),
-        governed_telemetry_emit("test", "us-east-1", {"data": "PRIVATE_INFO_789"}),
+        governed_tool_call_request("test", "us-east-1", "SENSITIVE_USER_TEXT_123", ["web"], {}, audit_sink=_test_audit_sink),
+        governed_memory_write_request("test", "us-east-1", {"patch": []}, "phase17", audit_sink=_test_audit_sink),
+        governed_telemetry_emit("test", "us-east-1", {"data": "PRIVATE_INFO_789"}, audit_sink=_test_audit_sink),
         governed_export_request("test", "us-east-1", {"type": "SECRET_EXPORT"}),
         governed_admin_action("test", "us-east-1", {"action": "SENSITIVE_ACTION"})
     ]
@@ -483,6 +571,9 @@ def main():
     result = TestResult()
     
     try:
+        # Reset audit sink for clean test run
+        reset_test_audit_sink()
+        
         # Run all gates
         test_gate1_tool_no_bypass(result)
         test_gate2_memory_no_bypass(result)
