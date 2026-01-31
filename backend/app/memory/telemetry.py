@@ -41,8 +41,8 @@ FORBIDDEN_KEY_SUBSTRINGS = frozenset([
 # Allowed TTL class labels
 ALLOWED_TTL_LABELS = frozenset(["TTL_1H", "TTL_1D", "TTL_10D", "UNKNOWN"])
 
-# Allowed reason code pattern (uppercase letters, digits, underscore, max 64 chars)
-REASON_CODE_PATTERN = re.compile(r"^[A-Z0-9_]{1,64}$")
+# Allowed reason code pattern (uppercase letters, digits, underscore, max 40 chars for safety)
+REASON_CODE_PATTERN = re.compile(r"^[A-Z0-9_]{1,40}$")
 
 # Known bucket labels
 KNOWN_BUCKET_LABELS = frozenset([
