@@ -81,6 +81,16 @@ from backend.app.memory.safety_filter import (
     ForbiddenScanResult,
 )
 
+# Phase 19 Step 7: Memory Telemetry + Replay Pack (NO USER TEXT)
+from backend.app.memory.telemetry import (
+    MemoryTelemetryEvent,
+    MemoryTelemetryInput,
+    build_memory_telemetry_event,
+    compute_memory_signature,
+    sanitize_structure,
+    MEMORY_TELEMETRY_VERSION,
+)
+
 # Legacy exports for backwards compatibility (used by service.py)
 from backend.app.memory.legacy import (
     get_redis,
@@ -151,6 +161,13 @@ __all__ = [
     "ForbiddenReason",
     "ForbiddenMatch",
     "ForbiddenScanResult",
+    # Phase 19 telemetry
+    "MemoryTelemetryEvent",
+    "MemoryTelemetryInput",
+    "build_memory_telemetry_event",
+    "compute_memory_signature",
+    "sanitize_structure",
+    "MEMORY_TELEMETRY_VERSION",
     # Legacy
     "get_redis",
     "load_cognitive_style",
