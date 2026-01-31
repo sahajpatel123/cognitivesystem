@@ -50,6 +50,20 @@ from .export import (
     EXPORT_VERSION,
 )
 
+from .rbac import (
+    Role,
+    AdminOperation,
+    RBACDecision,
+    authorize_admin_action,
+)
+
+from .change_control import (
+    ChangeType,
+    ChangeRequest,
+    ChangeDecision,
+    apply_change_control,
+)
+
 __all__ = [
     "TenantConfig",
     "RequestHints", 
@@ -84,4 +98,12 @@ __all__ = [
     "ExportReasonCode",
     "build_export_bundle",
     "EXPORT_VERSION",
+    "Role",
+    "AdminOperation",
+    "RBACDecision",
+    "authorize_admin_action",
+    "ChangeType",
+    "ChangeRequest",
+    "ChangeDecision",
+    "apply_change_control",
 ]
