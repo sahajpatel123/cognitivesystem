@@ -112,6 +112,18 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
     echo "ERROR: missing backend/tests/test_phase18_eval_gates.py" >&2
     exit 1
   fi
+  # Phase 19 Memory Eval Gates (fail-closed)
+  if [[ -f "$SCRIPT_DIR/../backend/tests/test_phase19_eval_gates.py" ]]; then
+    echo "phase19_eval_gates_present=1"
+    if ! grep -q 'PHASE 19 MEMORY EVAL GATES' "$SCRIPT_DIR/../backend/tests/test_phase19_eval_gates.py"; then
+      echo "ERROR: backend/tests/test_phase19_eval_gates.py missing required header" >&2
+      exit 1
+    fi
+  else
+    echo "phase19_eval_gates_present=0"
+    echo "ERROR: missing backend/tests/test_phase19_eval_gates.py" >&2
+    exit 1
+  fi
   # Phase 19 Memory Contract checks (fail-closed)
   if [[ -f "$SCRIPT_DIR/../docs/PHASE19_MEMORY_CONTRACT.md" ]]; then
     echo "phase19_contract_present=1"
