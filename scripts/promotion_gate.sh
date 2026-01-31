@@ -223,6 +223,32 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
   python3 -c "import backend.app.reliability.engine as e; print('step5_engine_ok=', hasattr(e,'run_step5'))"
   python3 -c "import backend.app.quality.gate as q; print('step5_quality_ok=', hasattr(q,'evaluate_quality'))"
   python3 -c "import backend.app.safety.envelope as s; print('step5_safety_ok=', hasattr(s,'apply_safety'))"
+  
+  # Phase 20 Governance Eval Gates (fail-closed)
+  echo "---- Phase 20 Governance Eval Gates"
+  if [[ -f "$SCRIPT_DIR/../backend/tests/test_phase20_eval_gates.py" ]]; then
+    echo "phase20_eval_gates_present=1"
+    # Validate marker
+    if grep -q "PHASE 20 GOVERNANCE EVAL GATES" "$SCRIPT_DIR/../backend/tests/test_phase20_eval_gates.py"; then
+      echo "phase20_eval_gates_marker_valid=1"
+      # Execute eval gates
+      if python3 "$SCRIPT_DIR/../backend/tests/test_phase20_eval_gates.py"; then
+        echo "phase20_eval_gates_passed=1"
+      else
+        echo "phase20_eval_gates_passed=0"
+        echo "ERROR: Phase 20 governance eval gates failed" >&2
+        exit 1
+      fi
+    else
+      echo "phase20_eval_gates_marker_valid=0"
+      echo "ERROR: Phase 20 eval gates missing required marker" >&2
+      exit 1
+    fi
+  else
+    echo "phase20_eval_gates_present=0"
+    echo "ERROR: missing backend/tests/test_phase20_eval_gates.py" >&2
+    exit 1
+  fi
   echo
 
   run_optional "Phase 15 drills (staging subset)" bash "$DRILLS"
