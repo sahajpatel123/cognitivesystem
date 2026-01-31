@@ -21,6 +21,8 @@ from pydantic import ValidationError
 from starlette.middleware.cors import ALL_METHODS
 from starlette.status import HTTP_302_FOUND
 
+from backend.app.middleware.strip_content_length import StripContentLengthMiddleware
+
 from backend.app.auth.identity import ANON_COOKIE_NAME, IdentityContext
 from backend.app.deps.identity import identity_dependency
 from backend.app.chat_contract import (
@@ -127,6 +129,8 @@ logger.info(
 
 _ALLOWED_ORIGINS = _settings.cors_origins_list()
 
+# Add Content-Length stripping middleware first (before other response-mutating middleware)
+app.add_middleware(StripContentLengthMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
