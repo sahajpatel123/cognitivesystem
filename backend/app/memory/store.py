@@ -579,6 +579,17 @@ class MemoryStore:
         view = self._event_store.recompute(self._scope_id, now_ms, self._default_caps)
         return view.total_active
     
+    def get_current_facts(self, now_ms: int, caps: Optional[StoreCaps] = None) -> List[MemoryFact]:
+        """
+        Get current active facts from derived view.
+        
+        Returns list of MemoryFact objects that are currently active.
+        """
+        if caps is None:
+            caps = self._default_caps
+        view = self._event_store.recompute(self._scope_id, now_ms, caps)
+        return [meta.fact for meta in view.active_facts.values()]
+    
     def get_event_store(self) -> MemoryEventLogStore:
         """Get the underlying event store (for testing)."""
         return self._event_store

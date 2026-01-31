@@ -63,6 +63,15 @@ from backend.app.memory.store import (
     create_fact_revoked_event,
 )
 
+# Phase 19 Step 5: Read Boundary + Bounded MemoryBundle
+from backend.app.memory.read import (
+    MemoryReadRequest,
+    ReadTemplate,
+    MemoryBundle,
+    BundleReason,
+    read_memory_bundle,
+)
+
 # Legacy exports for backwards compatibility (used by service.py)
 from backend.app.memory.legacy import (
     get_redis,
@@ -121,6 +130,12 @@ __all__ = [
     "create_fact_added_event",
     "create_fact_expired_event",
     "create_fact_revoked_event",
+    # Phase 19 read boundary
+    "MemoryReadRequest",
+    "ReadTemplate",
+    "MemoryBundle",
+    "BundleReason",
+    "read_memory_bundle",
     # Legacy
     "get_redis",
     "load_cognitive_style",
