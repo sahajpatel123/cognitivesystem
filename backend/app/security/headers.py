@@ -25,7 +25,7 @@ def apply_security_headers(response, *, is_https: bool, is_non_local: bool) -> N
 
 
 def maybe_harden_cookies(response, *, should_secure: bool) -> None:
-    """Append Secure flag to Set-Cookie headers when safe. Does not modify SameSite/HttpOnly."""
+    """Append Secure and SameSite=None flags to Set-Cookie headers for cross-origin credentials."""
     if not should_secure:
         return
     cookies = response.headers.getlist("set-cookie") if hasattr(response.headers, "getlist") else []
@@ -33,8 +33,12 @@ def maybe_harden_cookies(response, *, should_secure: bool) -> None:
         return
     updated = []
     for cookie in cookies:
+        # Add Secure flag if missing
         if "secure" not in cookie.lower():
             cookie = f"{cookie}; Secure"
+        # Add SameSite=None if no SameSite is set (required for cross-origin credentials)
+        if "samesite" not in cookie.lower():
+            cookie = f"{cookie}; SameSite=None"
         updated.append(cookie)
     if hasattr(response.headers, "pop"):
         response.headers.pop("set-cookie", None)

@@ -26,7 +26,7 @@ type Message = {
   failureType?: string | null;
 };
 
-const closedActions: Action[] = ["CLOSE", "REFUSE"];
+const closedActions: Action[] = ["CLOSE", "REFUSE", "BLOCK"];
 
 type UiState = "IDLE" | "SENDING" | "TERMINAL" | "FAILED";
 
@@ -176,6 +176,7 @@ export default function ChatPage() {
       const res = await fetch(`${apiBase}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(requestBody),
       });
 
@@ -213,11 +214,12 @@ export default function ChatPage() {
       const data: SafeChatResponse = validateChatResponse(raw);
       const action = data.action;
       pushSystemMessage(data.rendered_text, action, data.failure_type ?? null);
-      if (action === "REFUSE" || action === "CLOSE") {
+      if (action === "REFUSE" || action === "CLOSE" || action === "BLOCK") {
         setUiState("TERMINAL");
-      } else if (action === "FALLBACK") {
+      } else if (action === "FALLBACK" || action === "FAIL_GRACEFULLY") {
         setUiState("FAILED");
       } else {
+        // ANSWER, ASK_ONE_QUESTION, ASK_CLARIFY, ANSWER_DEGRADED -> allow continued input
         setUiState("IDLE");
       }
     } catch (err) {

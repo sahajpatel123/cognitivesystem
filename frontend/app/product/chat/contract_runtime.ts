@@ -1,4 +1,13 @@
-export type Action = "ANSWER" | "ASK_ONE_QUESTION" | "REFUSE" | "CLOSE" | "FALLBACK";
+export type Action = 
+  | "ANSWER" 
+  | "ASK_ONE_QUESTION" 
+  | "REFUSE" 
+  | "CLOSE" 
+  | "FALLBACK"
+  | "ANSWER_DEGRADED"
+  | "ASK_CLARIFY"
+  | "FAIL_GRACEFULLY"
+  | "BLOCK";
 
 export type SafeChatResponse = {
   action: Action;
@@ -16,7 +25,17 @@ export class FailClosedError extends Error {
 
 const MAX_INPUT_CHARS = 2000;
 const MAX_RENDERED_CHARS = 20000;
-const ALLOWED_ACTIONS: Action[] = ["ANSWER", "ASK_ONE_QUESTION", "REFUSE", "CLOSE", "FALLBACK"];
+const ALLOWED_ACTIONS: Action[] = [
+  "ANSWER", 
+  "ASK_ONE_QUESTION", 
+  "REFUSE", 
+  "CLOSE", 
+  "FALLBACK",
+  "ANSWER_DEGRADED",
+  "ASK_CLARIFY",
+  "FAIL_GRACEFULLY",
+  "BLOCK",
+];
 
 export function validateChatRequest(userText: string): { user_text: string } {
   if (typeof userText !== "string") {

@@ -22,6 +22,7 @@ from starlette.middleware.cors import ALL_METHODS
 from starlette.status import HTTP_302_FOUND
 
 from backend.app.middleware.strip_content_length import StripContentLengthMiddleware
+from backend.app.middleware.request_id import RequestIdMiddleware
 
 from backend.app.auth.identity import ANON_COOKIE_NAME, IdentityContext
 from backend.app.deps.identity import identity_dependency
@@ -129,16 +130,27 @@ logger.info(
 
 _ALLOWED_ORIGINS = _settings.cors_origins_list()
 
-# Add Content-Length stripping middleware first (before other response-mutating middleware)
-app.add_middleware(StripContentLengthMiddleware)
+# Add middlewares in order (last added = first executed)
+# 1. CORS (outermost) - credential-safe config
+# When allow_credentials=True, origins must NOT be "*"
+_cors_origins_safe = [o for o in _ALLOWED_ORIGINS if o != "*"]
+if not _cors_origins_safe:
+    _cors_origins_safe = ["http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
+    allow_origins=_cors_origins_safe,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-UX-State", "X-Cooldown-Seconds"],
 )
+
+# 2. Request ID middleware (adds X-Request-ID to all responses)
+app.add_middleware(RequestIdMiddleware)
+
+# 3. Content-Length stripping (innermost, prevents streaming errors)
+app.add_middleware(StripContentLengthMiddleware)
 
 service = ConversationService()
 cost_policy = get_cost_policy()
@@ -1346,19 +1358,31 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
 
 @app.exception_handler(WAFError)
 async def handle_waf_error(request: Request, exc: WAFError) -> JSONResponse:  # noqa: D401
+    rid = _request_id(request)
     headers = exc.to_headers()
+    headers["X-Request-Id"] = rid
     if getattr(request.state, "waf_used_memory", False):
         headers["X-WAF-Limiter"] = "memory-fallback"
-    return JSONResponse(status_code=exc.status_code, content=exc.to_body(), headers=headers)
+    body = exc.to_body()
+    if isinstance(body, dict):
+        body["request_id"] = rid
+    return JSONResponse(status_code=exc.status_code, content=body, headers=headers)
 
 
 @app.exception_handler(Exception)
 async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:  # noqa: BLE001
-    logger.exception("Unhandled error in request")
-    content = {"ok": False, "error_code": "internal_error", "message": "Internal server error"}
+    rid = _request_id(request)
+    logger.exception("Unhandled error in request", extra={"request_id": rid})
+    content = {
+        "ok": False,
+        "error": {
+            "code": "INTERNAL_ERROR",
+            "request_id": rid,
+        }
+    }
     if str(_settings.debug_errors) == "1":
-        content["detail"] = str(exc)
-    return JSONResponse(status_code=500, content=content)
+        content["error"]["detail"] = str(exc)[:200]
+    return JSONResponse(status_code=500, content=content, headers={"X-Request-Id": rid})
 
 
 @app.middleware("http")
