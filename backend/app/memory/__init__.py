@@ -72,6 +72,15 @@ from backend.app.memory.read import (
     read_memory_bundle,
 )
 
+# Phase 19 Step 6: Safety Filter (Forbidden Category Detector)
+from backend.app.memory.safety_filter import (
+    scan_fact_forbidden,
+    scan_facts_forbidden,
+    ForbiddenReason,
+    ForbiddenMatch,
+    ForbiddenScanResult,
+)
+
 # Legacy exports for backwards compatibility (used by service.py)
 from backend.app.memory.legacy import (
     get_redis,
@@ -136,6 +145,12 @@ __all__ = [
     "MemoryBundle",
     "BundleReason",
     "read_memory_bundle",
+    # Phase 19 safety filter
+    "scan_fact_forbidden",
+    "scan_facts_forbidden",
+    "ForbiddenReason",
+    "ForbiddenMatch",
+    "ForbiddenScanResult",
     # Legacy
     "get_redis",
     "load_cognitive_style",

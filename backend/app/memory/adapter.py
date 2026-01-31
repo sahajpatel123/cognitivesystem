@@ -35,9 +35,12 @@ from backend.app.memory.ttl_policy import (
     TTL_1H,
     TTL_1D,
     TTL_10D,
-    ReasonCode as TTLReasonCode,
+    REQUEST_TIME_BUCKET_MS,
 )
-
+from backend.app.memory.safety_filter import (
+    scan_facts_forbidden,
+    ForbiddenReason,
+)
 
 # ============================================================================
 # CONSTANTS
@@ -65,6 +68,7 @@ class ReasonCode(Enum):
     POLICY_DISABLED = "POLICY_DISABLED"
     REQUEST_INVALID = "REQUEST_INVALID"
     FORBIDDEN_CATEGORY = "FORBIDDEN_CATEGORY"
+    FORBIDDEN_CONTENT_DETECTED = "FORBIDDEN_CONTENT_DETECTED"
     PROVENANCE_INVALID = "PROVENANCE_INVALID"
     TOO_MANY_FACTS = "TOO_MANY_FACTS"
     TTL_INVALID = "TTL_INVALID"
@@ -77,6 +81,7 @@ REASON_PRIORITY = [
     ReasonCode.REQUEST_INVALID,
     ReasonCode.TOO_MANY_FACTS,
     ReasonCode.FORBIDDEN_CATEGORY,
+    ReasonCode.FORBIDDEN_CONTENT_DETECTED,
     ReasonCode.PROVENANCE_INVALID,
     ReasonCode.TTL_INVALID,
     ReasonCode.VALIDATION_FAIL,
@@ -565,7 +570,25 @@ def write_memory(
             )
         
         # ================================================================
-        # 6) Write to store (using bucketed expiry from policy engine)
+        # 6) Safety filter check (after validation, before store write)
+        # ================================================================
+        safety_result = scan_facts_forbidden(validated_facts)
+        if safety_result.forbidden:
+            # Map forbidden reason to error code
+            safety_error = f"SAFETY_FILTER_{safety_result.top_reason.value if safety_result.top_reason else 'UNKNOWN'}"
+            
+            return WriteResult(
+                accepted=False,
+                reason_code=ReasonCode.FORBIDDEN_CONTENT_DETECTED.value,
+                accepted_count=0,
+                rejected_count=len(req.facts),
+                ttl_applied_ms=None,
+                fact_ids_written=[],
+                errors=[safety_error],
+            )
+        
+        # ================================================================
+        # 7) Write to store (using bucketed expiry from policy engine)
         # ================================================================
         fact_ids_written = store.write_facts_with_expiry(validated_facts, expires_at_ms)
         
