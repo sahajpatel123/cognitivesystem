@@ -21,6 +21,16 @@ from .policy_engine import (
     decide_policy,
 )
 
+from .audit import (
+    AuditEvent,
+    AuditLog,
+    AuditOperationType,
+    AuditDecision,
+    AuditReasonCode,
+    record_audit_event,
+    AUDIT_MODEL_VERSION,
+)
+
 __all__ = [
     "TenantConfig",
     "RequestHints", 
@@ -35,4 +45,11 @@ __all__ = [
     "LoggingLevel",
     "EnvMode",
     "decide_policy",
+    "AuditEvent",
+    "AuditLog",
+    "AuditOperationType",
+    "AuditDecision",
+    "AuditReasonCode",
+    "record_audit_event",
+    "AUDIT_MODEL_VERSION",
 ]
