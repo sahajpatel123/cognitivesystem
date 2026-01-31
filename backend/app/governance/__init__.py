@@ -31,6 +31,17 @@ from .audit import (
     AUDIT_MODEL_VERSION,
 )
 
+from .retention import (
+    ArtifactType,
+    RetentionReasonCode,
+    DeletionTarget,
+    DeletionPlan,
+    CandidateRecord,
+    create_deletion_plan,
+    get_retention_windows,
+    apply_deletion_plan,
+)
+
 __all__ = [
     "TenantConfig",
     "RequestHints", 
@@ -52,4 +63,12 @@ __all__ = [
     "AuditReasonCode",
     "record_audit_event",
     "AUDIT_MODEL_VERSION",
+    "ArtifactType",
+    "RetentionReasonCode",
+    "DeletionTarget",
+    "DeletionPlan",
+    "CandidateRecord",
+    "create_deletion_plan",
+    "get_retention_windows",
+    "apply_deletion_plan",
 ]
