@@ -42,6 +42,14 @@ from .retention import (
     apply_deletion_plan,
 )
 
+from .export import (
+    ExportBundle,
+    ExportOutcome,
+    ExportReasonCode,
+    build_export_bundle,
+    EXPORT_VERSION,
+)
+
 __all__ = [
     "TenantConfig",
     "RequestHints", 
@@ -71,4 +79,9 @@ __all__ = [
     "create_deletion_plan",
     "get_retention_windows",
     "apply_deletion_plan",
+    "ExportBundle",
+    "ExportOutcome",
+    "ExportReasonCode",
+    "build_export_bundle",
+    "EXPORT_VERSION",
 ]
