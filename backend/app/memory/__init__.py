@@ -43,6 +43,26 @@ from backend.app.memory.ttl_policy import (
     REQUEST_TIME_BUCKET_MS,
 )
 
+# Phase 19 Step 4: Memory Store (Append-only Log + Derived View)
+from backend.app.memory.store import (
+    MEMORY_STORE_VERSION,
+    EventType,
+    StoreCaps,
+    MemoryEvent,
+    FactAddedEvent,
+    FactExpiredEvent,
+    FactRevokedEvent,
+    ActiveFactMeta,
+    CurrentView,
+    MemoryEventLogStore,
+    recompute_current_view,
+    create_event_log_store,
+    create_memory_store,
+    create_fact_added_event,
+    create_fact_expired_event,
+    create_fact_revoked_event,
+)
+
 # Legacy exports for backwards compatibility (used by service.py)
 from backend.app.memory.legacy import (
     get_redis,
@@ -84,6 +104,23 @@ __all__ = [
     "TTL_1D",
     "TTL_10D",
     "REQUEST_TIME_BUCKET_MS",
+    # Phase 19 store
+    "MEMORY_STORE_VERSION",
+    "EventType",
+    "StoreCaps",
+    "MemoryEvent",
+    "FactAddedEvent",
+    "FactExpiredEvent",
+    "FactRevokedEvent",
+    "ActiveFactMeta",
+    "CurrentView",
+    "MemoryEventLogStore",
+    "recompute_current_view",
+    "create_event_log_store",
+    "create_memory_store",
+    "create_fact_added_event",
+    "create_fact_expired_event",
+    "create_fact_revoked_event",
     # Legacy
     "get_redis",
     "load_cognitive_style",
