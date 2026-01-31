@@ -26,6 +26,17 @@ from backend.app.memory.schema import (
     sanitize_and_validate_fact,
     validate_fact_dict,
 )
+from backend.app.memory.ttl_policy import (
+    resolve_ttl,
+    TTLClass,
+    PlanTier,
+    TTLDecision,
+    TTL_POLICY_VERSION,
+    TTL_1H,
+    TTL_1D,
+    TTL_10D,
+    ReasonCode as TTLReasonCode,
+)
 
 
 # ============================================================================
@@ -169,12 +180,34 @@ class MemoryStore:
         now_ms: int,
     ) -> List[str]:
         """
-        Write facts to store.
+        Write facts to store (legacy method for backwards compatibility).
         
         Returns list of fact_ids written (stable order).
         """
         fact_ids = []
         expires_at_ms = now_ms + ttl_applied_ms
+        
+        for fact in facts:
+            self._facts[fact.fact_id] = fact
+            self._ttls[fact.fact_id] = expires_at_ms
+            fact_ids.append(fact.fact_id)
+        
+        return fact_ids
+    
+    def write_facts_with_expiry(
+        self,
+        facts: List[MemoryFact],
+        expires_at_ms: int,
+    ) -> List[str]:
+        """
+        Write facts to store with pre-computed bucketed expiry.
+        
+        This is the preferred method as it uses deterministic bucketed expiry
+        from the TTL policy engine.
+        
+        Returns list of fact_ids written (stable order).
+        """
+        fact_ids = []
         
         for fact in facts:
             self._facts[fact.fact_id] = fact
@@ -288,33 +321,68 @@ def _validate_provenance(fact: MemoryFact, provenance_required: bool) -> List[st
     return sorted(errors)
 
 
-def _compute_ttl(
+def _ms_to_ttl_class(ttl_ms: Optional[int]) -> Optional[str]:
+    """
+    Convert TTL milliseconds to TTL class string.
+    
+    Returns TTL class string or None if no mapping.
+    """
+    if ttl_ms is None:
+        return None
+    
+    # Map to nearest TTL class (round up)
+    if ttl_ms <= TTL_1H:
+        return TTLClass.TTL_1H.value
+    elif ttl_ms <= TTL_1D:
+        return TTLClass.TTL_1D.value
+    else:
+        return TTLClass.TTL_10D.value
+
+
+def _compute_ttl_via_policy(
     requested_ttl_ms: Optional[int],
     tier: Tier,
-) -> Tuple[int, bool, Optional[str]]:
+    now_ms: int,
+) -> Tuple[int, int, bool, Optional[str], str]:
     """
-    Compute TTL with tier-based clamping.
+    Compute TTL using the TTL policy engine.
     
-    Returns (ttl_applied_ms, was_clamped, error_code).
+    Returns (ttl_applied_ms, expires_at_ms, was_clamped, error_code, reason_code).
     """
-    caps = TIER_CAPS[tier]
+    # Convert requested TTL ms to TTL class
+    requested_ttl_class = _ms_to_ttl_class(requested_ttl_ms)
     
-    # Use default if not specified
-    if requested_ttl_ms is None:
-        return (caps.default_ttl_ms, False, None)
+    # Resolve via policy engine
+    decision = resolve_ttl(
+        plan_tier=tier.value,
+        requested_ttl_class=requested_ttl_class,
+        now_ms=now_ms,
+    )
     
-    # Reject invalid TTL
-    if requested_ttl_ms <= 0:
-        return (0, False, "TTL_NON_POSITIVE")
+    # Map effective TTL class back to ms
+    ttl_class_to_ms = {
+        TTLClass.TTL_1H.value: TTL_1H,
+        TTLClass.TTL_1D.value: TTL_1D,
+        TTLClass.TTL_10D.value: TTL_10D,
+    }
+    ttl_applied_ms = ttl_class_to_ms.get(decision.effective_ttl, TTL_1H)
     
-    if requested_ttl_ms > ONE_YEAR_MS:
-        return (0, False, "TTL_EXCEEDS_YEAR")
+    # Check for errors
+    if not decision.ok:
+        if decision.reason_code == TTLReasonCode.INVALID_NOW:
+            return (0, 0, False, "NOW_MS_INVALID", decision.reason_code)
+        elif decision.reason_code == TTLReasonCode.INVALID_TTL:
+            return (0, 0, False, "TTL_INVALID", decision.reason_code)
+        # For INVALID_PLAN, we still get a fallback decision
+        # Continue with the fallback values
     
-    # Clamp to tier max
-    if requested_ttl_ms > caps.max_ttl_ms:
-        return (caps.max_ttl_ms, True, None)
-    
-    return (requested_ttl_ms, False, None)
+    return (
+        ttl_applied_ms,
+        decision.expires_at_ms,
+        decision.was_clamped,
+        None,
+        decision.reason_code,
+    )
 
 
 # ============================================================================
@@ -400,9 +468,11 @@ def write_memory(
             )
         
         # ================================================================
-        # 3) Compute TTL
+        # 3) Compute TTL via policy engine
         # ================================================================
-        ttl_applied_ms, was_clamped, ttl_error = _compute_ttl(req.requested_ttl_ms, tier)
+        ttl_applied_ms, expires_at_ms, was_clamped, ttl_error, ttl_reason = _compute_ttl_via_policy(
+            req.requested_ttl_ms, tier, req.now_ms
+        )
         
         if ttl_error:
             return WriteResult(
@@ -495,9 +565,9 @@ def write_memory(
             )
         
         # ================================================================
-        # 6) Write to store
+        # 6) Write to store (using bucketed expiry from policy engine)
         # ================================================================
-        fact_ids_written = store.write_facts(validated_facts, ttl_applied_ms, req.now_ms)
+        fact_ids_written = store.write_facts_with_expiry(validated_facts, expires_at_ms)
         
         # Determine final reason code
         reason_code = ReasonCode.TTL_CLAMPED.value if was_clamped else ReasonCode.OK.value

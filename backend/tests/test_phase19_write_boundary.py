@@ -497,6 +497,9 @@ class Test10_FailClosed:
         class BrokenStore(MemoryStore):
             def write_facts(self, facts, ttl_applied_ms, now_ms):
                 raise RuntimeError("Store failure")
+            
+            def write_facts_with_expiry(self, facts, expires_at_ms):
+                raise RuntimeError("Store failure")
         
         store = BrokenStore()
         fact = make_valid_fact(fact_id="fact_broken_001")

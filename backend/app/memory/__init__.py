@@ -30,6 +30,19 @@ from backend.app.memory.adapter import (
     ReasonCode,
 )
 
+# Phase 19 Step 3: TTL Policy Engine
+from backend.app.memory.ttl_policy import (
+    resolve_ttl,
+    TTLClass,
+    PlanTier,
+    TTLDecision,
+    TTL_POLICY_VERSION,
+    TTL_1H,
+    TTL_1D,
+    TTL_10D,
+    REQUEST_TIME_BUCKET_MS,
+)
+
 # Legacy exports for backwards compatibility (used by service.py)
 from backend.app.memory.legacy import (
     get_redis,
@@ -61,6 +74,16 @@ __all__ = [
     "TierCaps",
     "TIER_CAPS",
     "ReasonCode",
+    # Phase 19 TTL policy
+    "resolve_ttl",
+    "TTLClass",
+    "PlanTier",
+    "TTLDecision",
+    "TTL_POLICY_VERSION",
+    "TTL_1H",
+    "TTL_1D",
+    "TTL_10D",
+    "REQUEST_TIME_BUCKET_MS",
     # Legacy
     "get_redis",
     "load_cognitive_style",
