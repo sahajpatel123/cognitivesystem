@@ -64,6 +64,13 @@ from .change_control import (
     apply_change_control,
 )
 
+from .regions import (
+    RegionMode,
+    TelemetryLevel,
+    ResolvedRegionCaps,
+    resolve_region_caps,
+)
+
 __all__ = [
     "TenantConfig",
     "RequestHints", 
@@ -106,4 +113,8 @@ __all__ = [
     "ChangeRequest",
     "ChangeDecision",
     "apply_change_control",
+    "RegionMode",
+    "TelemetryLevel",
+    "ResolvedRegionCaps",
+    "resolve_region_caps",
 ]
