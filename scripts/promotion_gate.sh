@@ -148,13 +148,75 @@ if [[ "$MODE_LOWER" == "staging" ]]; then
       exit 1
     fi
     if ! grep -q "NO SOURCE.*DON'T STORE" "$SCRIPT_DIR/../docs/PHASE19_MEMORY_CONTRACT.md"; then
-      echo "ERROR: PHASE19_MEMORY_CONTRACT.md missing NO SOURCE -> DON'T STORE rule" >&2
+      echo "ERROR: PHASE19_MEMORY_CONTRACT.md missing NO SOURCE → DON'T STORE rule" >&2
       exit 1
     fi
     echo "phase19_contract_valid=1"
   else
     echo "phase19_contract_present=0"
     echo "ERROR: missing docs/PHASE19_MEMORY_CONTRACT.md" >&2
+    exit 1
+  fi
+  # Phase 20 Governance Contract checks (fail-closed)
+  if [[ -f "$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.md" ]]; then
+    echo "phase20_contract_present=1"
+    # Extract current contract version
+    PHASE20_VERSION=$(grep -o 'ContractVersion.*"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"' "$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.md" | grep -o '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*' || echo "")
+    if [[ -z "$PHASE20_VERSION" ]]; then
+      echo "ERROR: PHASE20_GOVERNANCE_CONTRACT.md missing valid ContractVersion" >&2
+      exit 1
+    fi
+    echo "phase20_contract_version=$PHASE20_VERSION"
+    # Check version starts with 20.
+    if [[ ! "$PHASE20_VERSION" =~ ^20\. ]]; then
+      echo "ERROR: PHASE20_GOVERNANCE_CONTRACT.md ContractVersion must be 20.x.y" >&2
+      exit 1
+    fi
+    if ! grep -q 'Status.*FROZEN' "$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.md"; then
+      echo "ERROR: PHASE20_GOVERNANCE_CONTRACT.md missing Status: FROZEN" >&2
+      exit 1
+    fi
+    if ! grep -q 'STOP REASONS (EXHAUSTIVE)' "$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.md"; then
+      echo "ERROR: PHASE20_GOVERNANCE_CONTRACT.md missing STOP REASONS (EXHAUSTIVE) section" >&2
+      exit 1
+    fi
+    if ! grep -q 'FAIL-CLOSED LADDER (PRIORITY ORDER)' "$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.md"; then
+      echo "ERROR: PHASE20_GOVERNANCE_CONTRACT.md missing FAIL-CLOSED LADDER (PRIORITY ORDER) section" >&2
+      exit 1
+    fi
+    if ! grep -q 'VERSIONING & CHANGE CONTROL' "$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.md"; then
+      echo "ERROR: PHASE20_GOVERNANCE_CONTRACT.md missing VERSIONING & CHANGE CONTROL section" >&2
+      exit 1
+    fi
+    # Hash-based change detection
+    if [[ -f "$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.hash" ]]; then
+      STORED_HASH=$(cat "$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.hash" 2>/dev/null || echo "")
+      if command -v sha256sum >/dev/null 2>&1; then
+        CURRENT_HASH=$(sha256sum "$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.md" | cut -d' ' -f1)
+      else
+        CURRENT_HASH=$(python3 -c "import hashlib, pathlib; p=pathlib.Path('$SCRIPT_DIR/../docs/PHASE20_GOVERNANCE_CONTRACT.md'); print(hashlib.sha256(p.read_bytes()).hexdigest())" 2>/dev/null || echo "")
+      fi
+      if [[ "$STORED_HASH" == "$CURRENT_HASH" ]]; then
+        echo "phase20_contract_hash_match=1"
+      else
+        echo "phase20_contract_hash_match=0"
+        # Check if release evidence exists for this version
+        if grep -q "Phase20ContractVersion.*$PHASE20_VERSION" "$SCRIPT_DIR/../docs/RELEASE_LOG.md"; then
+          echo "phase20_release_evidence_present=1"
+        else
+          echo "phase20_release_evidence_present=0"
+          echo "ERROR: Phase 20 contract changed without version bump + release evidence" >&2
+          exit 1
+        fi
+      fi
+    else
+      echo "ERROR: missing docs/PHASE20_GOVERNANCE_CONTRACT.hash" >&2
+      exit 1
+    fi
+    echo "phase20_contract_valid=1"
+  else
+    echo "phase20_contract_present=0"
+    echo "ERROR: missing docs/PHASE20_GOVERNANCE_CONTRACT.md" >&2
     exit 1
   fi
   bash -n "$SCRIPT_DIR/chaos_gate.sh"

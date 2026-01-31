@@ -409,3 +409,24 @@ Deliverables:
   * Added FORBIDDEN CATEGORIES section validation (grep check)
   * Added NO SOURCE → DON'T STORE rule validation (grep check)
 Status: **CONTRACT FROZEN**. Governance only, no runtime code. Implementation Steps 19.1+ must comply.
+
+## Phase 20 — Step 0 Evidence (Governance Contract Freeze)
+Evidence date: 2026-01-31  
+Scope: Phase 20 Governance Contract frozen; added gate presence + hash-based change detection.
+Deliverables:
+- docs/PHASE20_GOVERNANCE_CONTRACT.md created (version 20.0.0)
+  * 4 governance invariants: Audit (append-only, structure-only), Export (deterministic, bounded), Retention (explicit policy, auditable), Admin Controls (capability-based, no overrides)
+  * 11 StopReasons (exhaustive): OK, POLICY_DISABLED, NOT_AUTHORIZED, SCOPE_INVALID, REQUEST_INVALID, RATE_LIMITED, BUDGET_EXHAUSTED, RETENTION_POLICY_VIOLATION, EXPORT_DENIED, DATA_NOT_FOUND, INTERNAL_INCONSISTENCY
+  * Fail-closed ladder (7-level priority order)
+  * Versioning & change control with SHA256 hash tracking
+  * No content leakage rule (structure-only governance artifacts)
+- docs/PHASE20_GOVERNANCE_CONTRACT.hash created
+  * SHA256 hash: 10d1e658af916c48b14a5f9f3ea90ce938062ce1d6283689f3b41d1304afea42
+- scripts/promotion_gate.sh updated
+  * Added phase20_contract_present check (fail-closed)
+  * Added ContractVersion "20.0.0" validation (grep check)
+  * Added Status: FROZEN validation (grep check)
+  * Added required sections validation (STOP REASONS, FAIL-CLOSED LADDER, VERSIONING & CHANGE CONTROL)
+  * Added hash-based change detection with version bump enforcement
+Phase20ContractVersion: 20.0.0
+Status: **CONTRACT FROZEN**. Hash-tracked change control enforced. Runtime governance implementation deferred to Step 20.1+.
