@@ -25,8 +25,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 MEMORY_TELEMETRY_VERSION = "19.7.0"
 
-# Forbidden keys that must be removed recursively to prevent text leakage
-FORBIDDEN_KEYS = frozenset([
+# Forbidden key substrings that must be removed from dict keys only (not values)
+FORBIDDEN_KEY_SUBSTRINGS = frozenset([
     "key", "value", "value_str", "value_num", "value_bool", "value_str_list", "tags",
     "fact_id", "fact", "facts", "raw", "text", "prompt", "message", "messages", "user",
     "assistant", "content", "quote", "excerpt", "snippet", "provenance", "source_id",
@@ -35,13 +35,20 @@ FORBIDDEN_KEYS = frozenset([
     "input", "output", "response", "request", "query", "search", "term",
     "phrase", "sentence", "paragraph", "document", "file", "path", "filename",
     "forbidden", "forbidden_field", "malicious", "sensitive", "secret", "private",
+    "transcript", "answer", "conversation", "chat", "dialog", "dialogue",
 ])
 
 # Allowed TTL class labels
 ALLOWED_TTL_LABELS = frozenset(["TTL_1H", "TTL_1D", "TTL_10D", "UNKNOWN"])
 
-# Allowed reason code pattern (uppercase letters, digits, underscore, max 40 chars)
-REASON_CODE_PATTERN = re.compile(r"^[A-Z0-9_]{1,40}$")
+# Allowed reason code pattern (uppercase letters, digits, underscore, max 64 chars)
+REASON_CODE_PATTERN = re.compile(r"^[A-Z0-9_]{1,64}$")
+
+# Known bucket labels
+KNOWN_BUCKET_LABELS = frozenset([
+    "0", "1-4", "5-8", "9-16", "17+", 
+    "1-400", "401-800", "801-1200", "1201+"
+])
 
 # Bounds
 MAX_DICT_KEYS = 64
@@ -106,6 +113,68 @@ class MemoryTelemetryEvent:
 
 
 # ============================================================================
+# VALUE TOKEN SANITIZATION
+# ============================================================================
+
+def sanitize_value_token(s: str, kind: str) -> str:
+    """
+    Sanitize string values based on their expected type/context.
+    
+    Args:
+        s: The string value to sanitize
+        kind: Type of token - "reason_code", "ttl_class", "bucket_label", "generic_token"
+    
+    Returns:
+        Sanitized string value
+    """
+    if not isinstance(s, str):
+        return "REDACTED_TOKEN"
+    
+    if len(s) > MAX_STRING_LENGTH:
+        return "REDACTED_TOKEN"
+    
+    # Check for obvious sentinel patterns that should never be allowed
+    s_lower = s.lower()
+    forbidden_patterns = ["sensitive_", "user_text", "memory_value", "user said", "i have", "personal information"]
+    if any(pattern in s_lower for pattern in forbidden_patterns):
+        if kind == "reason_code":
+            return "INVALID_REASON"
+        elif kind == "ttl_class":
+            return "UNKNOWN"
+        elif kind == "bucket_label":
+            return "UNKNOWN_BUCKET"
+        else:
+            return "REDACTED_TOKEN"
+    
+    if kind == "reason_code":
+        if REASON_CODE_PATTERN.match(s):
+            return s
+        else:
+            return "INVALID_REASON"
+    
+    elif kind == "ttl_class":
+        if s in ALLOWED_TTL_LABELS:
+            return s
+        else:
+            return "UNKNOWN"
+    
+    elif kind == "bucket_label":
+        if s in KNOWN_BUCKET_LABELS:
+            return s
+        else:
+            return "UNKNOWN_BUCKET"
+    
+    elif kind == "generic_token":
+        if REASON_CODE_PATTERN.match(s):
+            return s
+        else:
+            return "REDACTED_TOKEN"
+    
+    else:
+        return "REDACTED_TOKEN"
+
+
+# ============================================================================
 # SANITIZATION FUNCTIONS
 # ============================================================================
 
@@ -130,23 +199,18 @@ def sanitize_structure(obj: Any) -> Tuple[Any, bool, int]:
             return int(round(item * 1000)) / 1000, False, 0
         
         elif isinstance(item, str):
-            # Only allow safe strings (enum-like tokens, version strings, hex signatures)
+            # Sanitize string values using allowlist rules (no forbidden substring checks on values)
             if len(item) > MAX_STRING_LENGTH:
                 had_forbidden = True
                 dropped_count += 1
                 return "REDACTED_TOKEN", True, 1
             
-            # Allow version strings, hex signatures, and enum-like tokens
-            if (item == MEMORY_TELEMETRY_VERSION or
-                re.match(r"^[0-9a-f]{64}$", item) or  # SHA256 hex
-                re.match(r"^[A-Z0-9_]{1,40}$", item) or  # Enum-like tokens
-                item in ["0", "1-4", "5-8", "9-16", "17+", "1-400", "401-800", "801-1200", "1201+"] or  # Bucket labels
-                item in ALLOWED_TTL_LABELS):
-                return item, False, 0
-            else:
+            # Always use generic token sanitization for all strings to ensure forbidden patterns are caught
+            sanitized = sanitize_value_token(item, "generic_token")
+            if sanitized != item:
                 had_forbidden = True
                 dropped_count += 1
-                return "REDACTED_TOKEN", True, 1
+            return sanitized, sanitized != item, 1 if sanitized != item else 0
         
         elif isinstance(item, list):
             # Bound list size
@@ -176,7 +240,7 @@ def sanitize_structure(obj: Any) -> Tuple[Any, bool, int]:
                 if isinstance(key, str):
                     key_lower = key.lower()
                     # Check if key itself is forbidden
-                    if key_lower in FORBIDDEN_KEYS:
+                    if key_lower in FORBIDDEN_KEY_SUBSTRINGS:
                         dict_had_forbidden = True
                         dict_dropped += 1
                         continue
@@ -186,11 +250,18 @@ def sanitize_structure(obj: Any) -> Tuple[Any, bool, int]:
                     is_safe_prefixed = any(key_lower.startswith(prefix) for prefix in safe_prefixes)
                     
                     if not is_safe_prefixed:
-                        has_forbidden_substring = any(forbidden in key_lower for forbidden in FORBIDDEN_KEYS)
+                        has_forbidden_substring = any(forbidden in key_lower for forbidden in FORBIDDEN_KEY_SUBSTRINGS)
                         if has_forbidden_substring:
                             dict_had_forbidden = True
                             dict_dropped += 1
                             continue
+                    
+                    # Bound key length
+                    if len(key) > 64:
+                        dict_had_forbidden = True
+                        dict_dropped += 1
+                        continue
+                    
                     allowed_keys.append(key)
                 else:
                     dict_had_forbidden = True
@@ -272,24 +343,12 @@ def bucket_chars(chars: int) -> str:
 
 def sanitize_reason_code(code: str) -> str:
     """Sanitize reason code to safe format."""
-    if isinstance(code, str) and REASON_CODE_PATTERN.match(code):
-        # Additional check: ensure it doesn't contain obvious user text patterns
-        code_lower = code.lower()
-        user_text_patterns = ["user", "said", "i have", "my", "personal", "sensitive"]
-        has_user_text = any(pattern in code_lower for pattern in user_text_patterns)
-        if has_user_text:
-            return "INVALID_REASON"
-        return code
-    else:
-        return "INVALID_REASON"
+    return sanitize_value_token(code, "reason_code")
 
 
 def sanitize_ttl_class(ttl_class: str) -> str:
     """Sanitize TTL class to allowed labels."""
-    if isinstance(ttl_class, str) and ttl_class in ALLOWED_TTL_LABELS:
-        return ttl_class
-    else:
-        return "UNKNOWN"
+    return sanitize_value_token(ttl_class, "ttl_class")
 
 
 def build_histogram(items: List[str], max_keys: int = MAX_REASON_CODES) -> Dict[str, int]:
@@ -339,37 +398,14 @@ def build_memory_telemetry_event(input_data: MemoryTelemetryInput) -> MemoryTele
         bounded_reasons = input_data.rejection_reason_codes[:MAX_LIST_ITEMS]
         sanitized_reasons = []
         for code in bounded_reasons:
-            # First check if code contains forbidden content and skip if so
-            if isinstance(code, str):
-                code_lower = code.lower()
-                # Only filter out obvious user text patterns, not valid reason code words
-                user_text_patterns = ["user said", "i have", "my ", "personal information"]
-                has_user_text = any(pattern in code_lower for pattern in user_text_patterns)
-                # Also check for sentinel patterns specifically
-                has_sentinel = any(sentinel.lower() in code_lower for sentinel in ["sensitive_user_text", "sensitive_memory_value"])
-                if has_user_text or has_sentinel:
-                    continue  # Skip forbidden content entirely
-            
             sanitized_code = sanitize_reason_code(code)
-            if sanitized_code != "INVALID_REASON":  # Only include valid codes
-                sanitized_reasons.append(sanitized_code)
+            sanitized_reasons.append(sanitized_code)
         rejection_reason_hist = build_histogram(sanitized_reasons)
         
         # Sanitize and bound TTL classes
         bounded_ttl = input_data.ttl_classes[:MAX_LIST_ITEMS]
         sanitized_ttl = []
         for ttl in bounded_ttl:
-            # First check if TTL contains forbidden content and skip if so
-            if isinstance(ttl, str):
-                ttl_lower = ttl.lower()
-                # Only filter out obvious user text patterns, not valid TTL class words
-                user_text_patterns = ["user said", "i have", "my ", "personal information"]
-                has_user_text = any(pattern in ttl_lower for pattern in user_text_patterns)
-                # Also check for sentinel patterns specifically
-                has_sentinel = any(sentinel.lower() in ttl_lower for sentinel in ["sensitive_user_text", "sensitive_memory_value"])
-                if has_user_text or has_sentinel:
-                    continue  # Skip forbidden content entirely
-            
             sanitized_ttl_class = sanitize_ttl_class(ttl)
             sanitized_ttl.append(sanitized_ttl_class)
         ttl_class_hist = build_histogram(sanitized_ttl)
@@ -405,29 +441,24 @@ def build_memory_telemetry_event(input_data: MemoryTelemetryInput) -> MemoryTele
             "dropped_keys_count": caps_dropped,
         }
         
-        # Final sanitization pass
-        final_struct, final_had_forbidden, final_dropped = sanitize_structure(struct_pack)
-        if not isinstance(final_struct, dict):
-            final_struct = {}
-        
-        # Compute signature
-        memory_signature = compute_memory_signature(final_struct)
+        # Compute signature (struct_pack is already sanitized)
+        memory_signature = compute_memory_signature(struct_pack)
         
         # Create final event
         return MemoryTelemetryEvent(
             version=MEMORY_TELEMETRY_VERSION,
-            writes_attempted=final_struct.get("writes_attempted", 0),
-            writes_accepted=final_struct.get("writes_accepted", 0),
-            writes_rejected=final_struct.get("writes_rejected", 0),
-            rejection_reason_hist=final_struct.get("rejection_reason_hist", {}),
-            ttl_class_hist=final_struct.get("ttl_class_hist", {}),
-            reads_attempted=final_struct.get("reads_attempted", 0),
-            bundle_size_hist=final_struct.get("bundle_size_hist", {}),
-            bundle_chars_hist=final_struct.get("bundle_chars_hist", {}),
-            caps_snapshot=final_struct.get("caps_snapshot", {}),
+            writes_attempted=struct_pack["writes_attempted"],
+            writes_accepted=struct_pack["writes_accepted"],
+            writes_rejected=struct_pack["writes_rejected"],
+            rejection_reason_hist=struct_pack["rejection_reason_hist"],
+            ttl_class_hist=struct_pack["ttl_class_hist"],
+            reads_attempted=struct_pack["reads_attempted"],
+            bundle_size_hist=struct_pack["bundle_size_hist"],
+            bundle_chars_hist=struct_pack["bundle_chars_hist"],
+            caps_snapshot=struct_pack["caps_snapshot"],
             memory_signature=memory_signature,
-            had_forbidden_keys=caps_had_forbidden or final_had_forbidden,
-            dropped_keys_count=caps_dropped + final_dropped,
+            had_forbidden_keys=caps_had_forbidden,
+            dropped_keys_count=caps_dropped,
         )
     
     except Exception:

@@ -22,7 +22,7 @@ from backend.app.memory.telemetry import (
     canonical_json,
     assert_no_text_leakage,
     MEMORY_TELEMETRY_VERSION,
-    FORBIDDEN_KEYS,
+    FORBIDDEN_KEY_SUBSTRINGS,
     bucket_size,
     bucket_chars,
     sanitize_reason_code,
