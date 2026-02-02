@@ -167,9 +167,15 @@ def enforce_env_safety(settings: object) -> None:
         if not all_valid:
             raise ValueError("DB_HOST_ALLOWLIST_PROD contains invalid entry")
         if not db_host:
-            raise RuntimeError("DATABASE_URL host not in DB_HOST_ALLOWLIST_PROD")
+            raise RuntimeError(
+                f"DATABASE_URL host not in DB_HOST_ALLOWLIST_PROD "
+                f"(host=<none>, port={db_port}, allowlist_count={len(parsed_allowlist)})"
+            )
         if not _host_matches(db_host, db_port, parsed_allowlist):
-            raise RuntimeError("DATABASE_URL host not in DB_HOST_ALLOWLIST_PROD")
+            raise RuntimeError(
+                f"DATABASE_URL host not in DB_HOST_ALLOWLIST_PROD "
+                f"(host={db_host}, port={db_port}, allowlist_count={len(parsed_allowlist)})"
+            )
 
     # CORS strictness
     if app_env == "production":
