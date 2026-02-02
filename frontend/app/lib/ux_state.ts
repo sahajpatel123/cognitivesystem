@@ -17,10 +17,10 @@ const allowedStates: UXState[] = [
   "ERROR",
 ];
 
-export function normalizeUxState(v: string | null | undefined): UXState {
-  if (!v || typeof v !== "string") return "ERROR";
+export function normalizeUxState(v: string | null | undefined, fallback: UXState = "OK"): UXState {
+  if (!v || typeof v !== "string") return fallback;
   const upper = v.toUpperCase();
-  return allowedStates.includes(upper as UXState) ? (upper as UXState) : "ERROR";
+  return allowedStates.includes(upper as UXState) ? (upper as UXState) : fallback;
 }
 
 export function clampCooldownSeconds(n: unknown): number | null {

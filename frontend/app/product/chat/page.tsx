@@ -32,7 +32,13 @@ type UiState = "IDLE" | "SENDING" | "TERMINAL" | "FAILED";
 
 export default function ChatPage() {
   const apiBase = useMemo(() => {
-    const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+    const raw = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const isProd = process.env.NEXT_PUBLIC_ENV === "production";
+    // In production, NEXT_PUBLIC_API_BASE_URL is required - fail closed
+    if (isProd && !raw) {
+      throw new FailClosedError("NEXT_PUBLIC_API_BASE_URL required in production");
+    }
+    const base = raw ?? "http://localhost:8000";
     try {
       const url = new URL(base);
       if (url.protocol !== "http:" && url.protocol !== "https:") {
@@ -57,6 +63,16 @@ export default function ChatPage() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const pendingRequestId = useRef(0);
+
+  // Transport debug state (dev-only, no user text)
+  const [transportDebug, setTransportDebug] = useState<{
+    lastUrl: string | null;
+    lastStatus: number | null;
+    lastRequestId: string | null;
+    lastUxState: string | null;
+    lastError: string | null;
+  }>({ lastUrl: null, lastStatus: null, lastRequestId: null, lastUxState: null, lastError: null });
+  const debugTransport = process.env.NEXT_PUBLIC_DEBUG_TRANSPORT === "1";
 
   useEffect(() => {
     uiStateRef.current = uiState;
@@ -131,7 +147,14 @@ export default function ChatPage() {
       action,
       failureType: failureType ?? null,
     };
-    setMessages((prev) => [...prev, sysMsg]);
+    // Dedupe: don't append if last system message has same action + text
+    setMessages((prev) => {
+      const lastSys = [...prev].reverse().find((m) => m.role === "system");
+      if (lastSys && lastSys.action === action && lastSys.text === text) {
+        return prev; // Skip duplicate
+      }
+      return [...prev, sysMsg];
+    });
   };
 
   const beginNewSession = () => {
@@ -173,17 +196,27 @@ export default function ChatPage() {
     const currentRequestId = pendingRequestId.current + 1;
     pendingRequestId.current = currentRequestId;
     try {
-      const res = await fetch(`${apiBase}/api/chat`, {
+      const fetchUrl = `${apiBase}/api/chat`;
+      const res = await fetch(fetchUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(requestBody),
       });
 
+      // Transport debug (structure-only, no user text)
+      if (debugTransport) {
+        const dbgRid = res.headers.get("x-request-id") || res.headers.get("X-Request-ID");
+        const dbgUx = res.headers.get("x-ux-state") || res.headers.get("X-UX-State");
+        setTransportDebug({ lastUrl: fetchUrl, lastStatus: res.status, lastRequestId: dbgRid, lastUxState: dbgUx, lastError: null });
+        console.log("[TransportDebug]", { url: fetchUrl, status: res.status, requestId: dbgRid, uxState: dbgUx, corsExposeHeaders: res.headers.get("access-control-expose-headers") });
+      }
+
       const hdrUx = res.headers.get("X-UX-State") || res.headers.get("x-ux-state");
       const hdrCd = res.headers.get("X-Cooldown-Seconds") || res.headers.get("x-cooldown-seconds");
       const hdrRid = res.headers.get("X-Request-Id") || res.headers.get("x-request-id");
-      const newUx = normalizeUxState(hdrUx);
+      // On success (2xx), default to OK; on failure, default to ERROR
+      const newUx = normalizeUxState(hdrUx, res.ok ? "OK" : "ERROR");
       const newCooldown = clampCooldownSeconds(hdrCd ? Number(hdrCd) : null);
       setUxState(newUx);
       setRequestId(hdrRid);
@@ -225,6 +258,12 @@ export default function ChatPage() {
     } catch (err) {
       if (pendingRequestId.current !== currentRequestId) {
         return;
+      }
+      // Transport debug for errors (structure-only, no user text)
+      if (debugTransport) {
+        const errMsg = err instanceof Error ? err.message : "unknown";
+        setTransportDebug((prev) => ({ ...prev, lastError: errMsg }));
+        console.log("[TransportDebug] error", { error: errMsg });
       }
       pushSystemMessage("Request failed. Please retry.", "FALLBACK");
       setUiState("FAILED");
@@ -308,6 +347,16 @@ export default function ChatPage() {
             DEV MODE — Using {process.env.NEXT_PUBLIC_API_BASE_URL ?? "unset"} as API base
           </div>
         )}
+        {debugTransport && (
+          <div className="transport-debug" role="status" style={{ fontSize: "0.75rem", background: "#1a1a2e", padding: "0.5rem", borderRadius: "4px", marginTop: "0.5rem", fontFamily: "monospace" }}>
+            <strong>Transport Debug</strong>
+            <div>URL: {transportDebug.lastUrl ?? "—"}</div>
+            <div>Status: {transportDebug.lastStatus ?? "—"}</div>
+            <div>X-Request-ID: {transportDebug.lastRequestId ?? "—"}</div>
+            <div>X-UX-State: {transportDebug.lastUxState ?? "—"}</div>
+            {transportDebug.lastError && <div style={{ color: "#ff6b6b" }}>Error: {transportDebug.lastError}</div>}
+          </div>
+        )}
       </div>
 
       <div className="chat-shell">
@@ -360,14 +409,6 @@ export default function ChatPage() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (!sendDisabled) {
-                  void sendMessage(input);
-                }
-              }
-            }}
             placeholder={inputDisabled ? "Interaction closed" : "Type a governed prompt..."}
             disabled={inputDisabled}
           />
