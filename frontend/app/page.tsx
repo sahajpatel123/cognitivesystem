@@ -59,7 +59,7 @@ export default function HomePage() {
           <span className="hero-eyebrow">Cognitive System</span>
           <h1 className="hero-title">The quietly confident AI companion for Mac.</h1>
           <p className="hero-subhead">
-            A cinematic hero surface, glass-depth Mac window, and dock interactions that echo Cluely’s polish. The system feels
+            A cinematic hero surface, glass-depth Mac window, and dock interactions that echo Cluely's polish. The system feels
             alive even when idle.
           </p>
           <div className="hero-cta">

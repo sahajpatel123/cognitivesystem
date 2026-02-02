@@ -17,6 +17,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <div className="css-loaded-check" />
         <div className="gradient-backdrop" aria-hidden />
         <div className="site-shell">
           <TopNav />
