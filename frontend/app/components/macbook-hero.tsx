@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { AnimatePresence, motion, useScroll, useTransform } from "framer-motion";
+import { LiveClock } from "./LiveClock";
 
 const tabs = [
   { id: "guidance", label: "Guidance" },
@@ -20,35 +21,35 @@ const tabContent: Record<
 > = {
   guidance: {
     rows: [
-      { title: "Current call", body: "Investor sync – 14 min remaining", badge: "Live" },
-      { title: "Tone guardrails", body: "Calm, confident, observational", badge: "Pinned" },
-      { title: "Next action", body: "Share rollout cadence deck before Friday.", badge: "Ready" },
+      { title: "Active session", body: "Policy-governed agent run — awaiting input", badge: "Live" },
+      { title: "Operation mode", body: "Verified mode · auditable steps · deterministic tools", badge: "Pinned" },
+      { title: "Next step", body: "Select objective → constraints → tools → output format", badge: "Ready" },
     ],
     panels: [
-      { copy: "“We launch without announcing ourselves. Meet them calmly.”", label: "Real-time brief" },
-      { copy: "Follow-up email draft is already staged with compliant tone.", label: "After-call" },
+      { copy: "Every action is logged. Every tool call is traceable.", label: "Trace log" },
+      { copy: "A safe plan is generated before execution. You approve the final run.", label: "Control layer" },
     ],
   },
   summary: {
     rows: [
-      { title: "Key discussion", body: "Rolled through launch cadence + stakeholder map.", badge: "Notes" },
-      { title: "Decisions made", body: "Greenlighted pilot for frontline enablement.", badge: "Locked" },
-      { title: "Action items", body: "Send warm intro pack + compliance brief tonight.", badge: "Due" },
+      { title: "Key output", body: "Drafted a compliant multi-agent workflow with checkpoints.", badge: "Notes" },
+      { title: "Decisions", body: "Guardrails enabled: data boundaries + tool allowlist.", badge: "Locked" },
+      { title: "Action items", body: "Connect sources → run evaluation → promote to production.", badge: "Due" },
     ],
     panels: [
-      { copy: "Three highlights and transcript snippets already clipped.", label: "Highlights" },
-      { copy: "Auto-generated recap mail waiting in Drafts folder.", label: "Send-ready summary" },
+      { copy: "3 runs compared across cost, latency, and reliability.", label: "Evaluation" },
+      { copy: "Incident-ready audit trail prepared for export.", label: "Report" },
     ],
   },
   safeguards: {
     rows: [
-      { title: "Compliance status", body: "In-policy · SOC II / GDPR controls enforced.", badge: "Clear" },
-      { title: "Tone constraints", body: "Stay calm, observational, never directive.", badge: "Tone" },
-      { title: "Risk flags", body: "Zero escalations in last 48 hours.", badge: "Low" },
+      { title: "Compliance status", body: "In-policy · access scoped · retention controlled.", badge: "Clear" },
+      { title: "Safety constraints", body: "No secrets exfiltration · no untrusted tools · no unsafe actions.", badge: "Tone" },
+      { title: "Risk flags", body: "Zero policy violations in last 48 hours.", badge: "Low" },
     ],
     panels: [
-      { copy: "Policy alignment confirmed for finance + healthcare cohorts.", label: "Policy alignment" },
-      { copy: "Live guardrails throttling any speculative phrasing.", label: "Active enforcement" },
+      { copy: "Role-based access enforced for agents and connectors.", label: "Access control" },
+      { copy: "Live guardrails block risky phrasing and unsafe tool use.", label: "Active enforcement" },
     ],
   },
 };
@@ -71,8 +72,8 @@ export function MacbookHero() {
               <span />
             </div>
             <div className="device-status">
-              <span>Calm Speak</span>
-              <span>10:24</span>
+              <span>COGNITIVE SYSTEM</span>
+              <LiveClock />
             </div>
           </div>
 

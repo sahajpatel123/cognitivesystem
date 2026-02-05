@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { COMPANY_NAV_LINKS, PRODUCT_NAV_LINKS } from "../lib/static-data";
+import { useAuth } from "../lib/useAuth";
 
 const transition = { duration: 0.18, ease: [0.33, 0.11, 0.22, 1] };
 
@@ -13,6 +14,7 @@ type DropdownKey = "product" | "company" | null;
 export function TopNav() {
   const pathname = usePathname();
   const [openKey, setOpenKey] = useState<DropdownKey>(null);
+  const { user, signOut } = useAuth();
 
   const handleEnter = (key: DropdownKey) => setOpenKey(key);
   const handleLeave = () => setOpenKey(null);
@@ -113,7 +115,13 @@ export function TopNav() {
         </nav>
 
         <div className="nav-cta">
-          <Link href="/product">Get for Mac</Link>
+          {user ? (
+            <button type="button" onClick={signOut}>
+              Sign out
+            </button>
+          ) : (
+            <Link href="/signin">Sign in</Link>
+          )}
         </div>
       </div>
     </div>

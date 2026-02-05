@@ -4,43 +4,45 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { MacbookHero } from "./components/macbook-hero";
-import { CardDeckSection } from "./components/card-deck-section";
 import { SectionReveal } from "./components/section-reveal";
 import { SocialsCelebration } from "./components/socials-celebration";
 
 const signalMetrics = [
   {
-    value: "312",
-    label: "Deployments",
-    detail: "Indicates the number of production environments where the system runs quietly and repeatedly.",
+    value: "N/A",
+    label: "Policies active",
+    detail: "Guardrails applied across tools, data access, and response style. Policies are versioned and auditable.",
     secondary: "Shows the surface has been trusted enough to be promoted into production cycles repeatedly.",
     backTitle: "Execution model",
-    backValue: "Synchronous, in-call only",
-    backSubtext: "No rewrites or delayed prompts.",
+    backValue: "Deterministic, policy-first",
+    backSubtext: "Constraints run before generation.",
+    backOneLiner: "Same inputs. Same output.",
     constraintTitle: "Deterministic execution",
-    constraintBody: "All guidance is generated synchronously during the conversation. Nothing is revised after the moment passes.",
+    constraintBody: "Same inputs under the same policy produce consistent behavior. No silent rewriting after the moment.",
   },
   {
-    value: "94%",
-    label: "Adoption",
-    detail: "Represents teams that continue using the surface after onboarding, showing the habit sticks.",
+    value: "≥ 98%",
+    label: "In-policy target",
+    detail: "Goal for interactions staying within defined boundaries without escalation. Designed for safe default behavior.",
     secondary: "Signals that teams keep the assistant in their workflow after the initial rollout.",
     backTitle: "Memory boundary",
-    backValue: "Session-scoped",
-    backSubtext: "Nothing from one call touches the next.",
-    constraintTitle: "Isolated session memory",
-    constraintBody: "Each call is treated as a sealed environment. Context does not leak across meetings.",
+    backValue: "Session-scoped by default",
+    backSubtext: "No cross-session leakage.",
+    backOneLiner: "Sealed context by default.",
+    constraintTitle: "Isolated sessions",
+    constraintBody: "Each session is treated as sealed context. You decide what persists—nothing leaks by default.",
   },
   {
-    value: "41 ms",
-    label: "Latency",
-    detail: "Guidance appears quickly enough to stay within the conversation’s cadence.",
+    value: "≤ 60 ms",
+    label: "Guardrail budget",
+    detail: "Latency reserved for constraint checks + verification. Kept low enough to feel instant.",
     secondary: "Keeps guidance invisible to the cadence of the speaker and listener.",
-    backTitle: "Output discipline",
-    backValue: "Guardrail-locked",
-    backSubtext: "Tone, scope, and claims stay constrained.",
-    constraintTitle: "Controlled output surface",
-    constraintBody: "Suggestions are filtered through active guardrails for tone, scope, and intent before they appear.",
+    backTitle: "Audit trail",
+    backValue: "Every action is logged",
+    backSubtext: "Traceable inputs → outputs.",
+    backOneLiner: "Every action is logged.",
+    constraintTitle: "Auditable outputs",
+    constraintBody: "Every tool call and constraint decision is recorded. Easy to review what happened and why.",
   },
 ];
 
@@ -56,18 +58,17 @@ export default function HomePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: [0.23, 1, 0.32, 1] }}
         >
-          <span className="hero-eyebrow">Cognitive System</span>
-          <h1 className="hero-title">The quietly confident AI companion for Mac.</h1>
+          <span className="hero-eyebrow">Governed AI · Private & Secure</span>
+          <h1 className="hero-title">A Governed AI Multi-Agent Platform</h1>
           <p className="hero-subhead">
-            A cinematic hero surface, glass-depth Mac window, and dock interactions that echo Cluely's polish. The system feels
-            alive even when idle.
+            Deploy and govern safe, auditable AI agents. Harness cognitive power while ensuring privacy, compliance, and full operational control.
           </p>
           <div className="hero-cta">
-            <Link href="/product" className="cta-mac">
-              Get for Mac
+            <Link href="/product/chat" className="cta-mac">
+              Chat
             </Link>
             <Link href="/product#flow" className="cta-outline">
-              Watch the walkthrough
+              How it Works?
             </Link>
           </div>
         </motion.div>
@@ -102,33 +103,32 @@ export default function HomePage() {
           <div className="insight-panel-body">
             {signalMetrics.map((metric) => (
               <article key={metric.label} className="insight-entry">
-                <motion.div
-                  className="insight-entry-card"
-                  animate={{ rotateY: isFlipped ? 180 : 0 }}
-                  transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-                >
+                <div className={`insight-entry-card${isFlipped ? ' is-flipped' : ''}`}>
                   <div className="insight-card-face insight-card-front">
-                    <div className="insight-entry-value">{metric.value}</div>
-                    <p>{metric.label}</p>
+                    <div className="metric-row">
+                      <div className="metric-value">{metric.value}</div>
+                      <div className="metric-label">{metric.label}</div>
+                    </div>
                   </div>
                   <div className="insight-card-face insight-card-back">
                     <span className="insight-back-label">{metric.backTitle}</span>
                     <strong>{metric.backValue}</strong>
                     <small>{metric.backSubtext}</small>
+                    <p className="metric-backline">{metric.backOneLiner}</p>
                   </div>
-                </motion.div>
+                </div>
               </article>
             ))}
           </div>
         </div>
 
         <div className="insight-metrics">
-          <span className="hero-eyebrow">Signal fidelity</span>
-          <h2>Real-time cognitive guidance.</h2>
+          <span className="hero-eyebrow">{isFlipped ? "Safety guarantees" : "Governance signal"}</span>
+          <h2>{isFlipped ? "Built for controlled operation." : "Real-time governed execution."}</h2>
           <p>
             {isFlipped
-              ? "The system operates under strict constraints designed for live use."
-              : "The desktop surface follows the meeting, not the other way around."}
+              ? "Clear boundaries, predictable behavior."
+              : "Controls run before output reaches the user."}
           </p>
 
           <div className="metric-stack-shell">
@@ -175,8 +175,6 @@ export default function HomePage() {
           </div>
         </div>
       </SectionReveal>
-
-      <CardDeckSection />
 
       <SectionReveal className="socials-section">
         <div className="socials-box" aria-label="Social channels placeholder">

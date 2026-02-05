@@ -31,7 +31,7 @@ const MAX_MESSAGE_CHARS = 4000;
 export function startNewSession(): { session: SessionState; messages: StoredMessage[] } {
   const now = Date.now();
   const session: SessionState = {
-    sessionId: crypto.randomUUID(),
+    sessionId: typeof crypto !== "undefined" ? crypto.randomUUID() : `session-${now}-${Math.random()}`,
     createdAt: now,
     expiresAt: now + TTL_MS,
   };
@@ -44,6 +44,9 @@ export function isExpired(session: SessionState): boolean {
 }
 
 export function loadSession(): { session: SessionState; messages: StoredMessage[] } {
+  if (typeof window === "undefined") {
+    return startNewSession();
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
@@ -68,6 +71,9 @@ export function loadSession(): { session: SessionState; messages: StoredMessage[
 }
 
 export function persist(session: SessionState, messages: StoredMessage[]): void {
+  if (typeof window === "undefined") {
+    return;
+  }
   try {
     const bounded = messages.slice(-MAX_MESSAGES).map((m) => ({
       ...m,

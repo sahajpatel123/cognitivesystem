@@ -26,6 +26,7 @@ from backend.app.middleware.request_id import RequestIdMiddleware
 
 from backend.app.auth.identity import ANON_COOKIE_NAME, IdentityContext
 from backend.app.deps.identity import identity_dependency
+from backend.app.routers import auth
 from backend.app.chat_contract import (
     ChatAction,
     ChatRequest as ContractChatRequest,
@@ -154,6 +155,9 @@ app.add_middleware(StripContentLengthMiddleware)
 
 service = ConversationService()
 cost_policy = get_cost_policy()
+
+# Include auth router
+app.include_router(auth.router)
 
 
 @app.post("/v1/sessions/{session_id}/messages", response_model=ChatResponse)
