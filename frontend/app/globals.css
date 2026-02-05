@@ -576,7 +576,7 @@ a {
   position: relative;
   display: flex;
   justify-content: center;
-  padding: 100px 0 0;
+  padding: 100px 0 64px;
   margin-top: 340px;
   margin-bottom: 0;
   overflow: visible;

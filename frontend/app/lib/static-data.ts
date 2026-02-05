@@ -112,33 +112,13 @@ export interface MarketingNavLink {
 
 export const PRODUCT_NAV_LINKS: MarketingNavLink[] = [
   {
-    label: "Product home",
-    href: "/product",
-    helper: "Tour the calm, public-facing experience.",
-  },
-  {
     label: "Chat",
     href: "/product/chat",
     helper: "Governed text-in/text-out surface.",
   },
-  {
-    label: "How it works",
-    href: "/product#flow",
-    helper: "Follow the three-step story for newcomers.",
-  },
-  {
-    label: "Capabilities",
-    href: "/product#capabilities",
-    helper: "See what people can accomplish immediately.",
-  },
 ];
 
 export const COMPANY_NAV_LINKS: MarketingNavLink[] = [
-  {
-    label: "Company home",
-    href: "/company",
-    helper: "Mission, values, and calm commitments.",
-  },
   {
     label: "About",
     href: "/company/about",
@@ -148,16 +128,6 @@ export const COMPANY_NAV_LINKS: MarketingNavLink[] = [
     label: "Contact",
     href: "/company/contact",
     helper: "Reach a real human without scripts.",
-  },
-  {
-    label: "Support",
-    href: "/company/support",
-    helper: "See how we stay responsive and clear.",
-  },
-  {
-    label: "Security",
-    href: "/company/security",
-    helper: "Review the safeguards that stay on by default.",
   },
 ];
 

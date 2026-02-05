@@ -2,7 +2,6 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { TopNav } from "./components/top-nav";
 import { PageTransition } from "./components/page-transition";
-import { SiteFooter } from "./components/site-footer";
 
 export const metadata: Metadata = {
   title: "Cognitive System Control Surface",
@@ -22,7 +21,6 @@ export default function RootLayout({
         <div className="site-shell">
           <TopNav />
           <PageTransition>{children}</PageTransition>
-          <SiteFooter />
         </div>
       </body>
     </html>
