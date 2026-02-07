@@ -1,6 +1,6 @@
-import { PrimaryMetrics } from "../components/primary-metrics";
-import { CONTRACT_SECTIONS, INITIAL_RUN } from "../lib/static-data";
-import { formatRiskClassification } from "../lib/formatters";
+import { PrimaryMetrics } from "../../components/primary-metrics";
+import { CONTRACT_SECTIONS, INITIAL_RUN } from "../../lib/static-data";
+import { formatRiskClassification } from "../../lib/formatters";
 
 const contractMetrics = [
   {

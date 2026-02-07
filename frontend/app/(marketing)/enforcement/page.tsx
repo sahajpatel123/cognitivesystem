@@ -1,6 +1,6 @@
-import { PrimaryMetrics } from "../components/primary-metrics";
-import { ENFORCEMENT_ENTRIES, INITIAL_RUN } from "../lib/static-data";
-import { formatPipelineState, formatRiskClassification } from "../lib/formatters";
+import { PrimaryMetrics } from "../../components/primary-metrics";
+import { ENFORCEMENT_ENTRIES, INITIAL_RUN } from "../../lib/static-data";
+import { formatPipelineState, formatRiskClassification } from "../../lib/formatters";
 
 const totalEntries = ENFORCEMENT_ENTRIES.length;
 const rejectedCount = ENFORCEMENT_ENTRIES.filter((entry) => entry.outcome === "rejected").length;

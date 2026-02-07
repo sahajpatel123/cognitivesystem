@@ -1,7 +1,5 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { TopNav } from "./components/top-nav";
-import { PageTransition } from "./components/page-transition";
 
 export const metadata: Metadata = {
   title: "Cognitive System Control Surface",
@@ -19,8 +17,7 @@ export default function RootLayout({
         <div className="css-loaded-check" />
         <div className="gradient-backdrop" aria-hidden />
         <div className="site-shell">
-          <TopNav />
-          <PageTransition>{children}</PageTransition>
+          {children}
         </div>
       </body>
     </html>

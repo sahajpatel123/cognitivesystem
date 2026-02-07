@@ -1,11 +1,11 @@
-import { PrimaryMetrics } from "../components/primary-metrics";
-import { ExecutionStage } from "../components/panels/execution-stage";
-import { AUDIT_RUNS, INITIAL_RUN } from "../lib/static-data";
+import { PrimaryMetrics } from "../../components/primary-metrics";
+import { ExecutionStage } from "../../components/panels/execution-stage";
+import { AUDIT_RUNS, INITIAL_RUN } from "../../lib/static-data";
 import {
   formatPipelineState,
   formatRiskClassification,
   formatSecondsAsClock,
-} from "../lib/formatters";
+} from "../../lib/formatters";
 
 const enforcementOutcomeCopy: Record<typeof INITIAL_RUN.enforcementOutcome, string> = {
   pass: "Enforcement outcome: Pass",

@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
-import { MacbookHero } from "./components/macbook-hero";
-import { SectionReveal } from "./components/section-reveal";
-import { SocialsCelebration } from "./components/socials-celebration";
+import { MacbookHero } from "../components/macbook-hero";
+import { SectionReveal } from "../components/section-reveal";
+import { SocialsCelebration } from "../components/socials-celebration";
 
 const signalMetrics = [
   {

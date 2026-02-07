@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Action,
   FailClosedError,
@@ -15,8 +15,23 @@ import {
   SessionState,
   isExpired,
 } from "./session_runtime";
-import { SystemStatus } from "../../components/system-status";
-import { UXState, clampCooldownSeconds, normalizeUxState } from "../../lib/ux_state";
+import { UXState, clampCooldownSeconds, normalizeUxState } from "../../../lib/ux_state";
+import {
+  ChatSidebar,
+  ChatMessage,
+  ChatComposer,
+  ChatActionsMenu,
+  ChatSession,
+  loadChatSessions,
+  saveChatSessions,
+  getCurrentSessionId,
+  setCurrentSessionId,
+  createSessionTitle,
+  addOrUpdateSession,
+  deleteSession as deleteStoredSession,
+  getSessionById,
+} from "./_components";
+import "./chatgpt.css";
 
 type Message = {
   id: string;
@@ -60,8 +75,10 @@ export default function ChatPage() {
   const [cooldownEndsAtMs, setCooldownEndsAtMs] = useState<number | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [session, setSession] = useState<SessionState | null>(null);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [currentChatSessionId, setCurrentChatSessionId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
-  const listRef = useRef<HTMLDivElement | null>(null);
   const pendingRequestId = useRef(0);
 
   // Transport debug state (dev-only, no user text)
@@ -95,24 +112,51 @@ export default function ChatPage() {
   }, [cooldownEndsAtMs]);
 
   useEffect(() => {
+    const sessions = loadChatSessions();
+    setChatSessions(sessions);
+    const currentId = getCurrentSessionId();
+    if (currentId) {
+      const currentSession = getSessionById(currentId);
+      if (currentSession) {
+        setCurrentChatSessionId(currentId);
+        setMessages(currentSession.messages);
+        const lastUser = [...currentSession.messages].reverse().find((m) => m.role === "user");
+        if (lastUser) setLastUserText(lastUser.text);
+        const lastSystem = [...currentSession.messages].reverse().find((m) => m.role === "system");
+        if (lastSystem && (lastSystem.action === "REFUSE" || lastSystem.action === "CLOSE")) {
+          setUiState("TERMINAL");
+        } else if (lastSystem && lastSystem.action === "FALLBACK") {
+          setUiState("FAILED");
+        }
+      }
+    }
     const restored = loadSession();
     setSession(restored.session);
-    setMessages(restored.messages);
-    const lastUser = [...restored.messages].reverse().find((m) => m.role === "user");
-    if (lastUser) setLastUserText(lastUser.text);
-    const lastSystem = [...restored.messages].reverse().find((m) => m.role === "system");
-    if (lastSystem && (lastSystem.action === "REFUSE" || lastSystem.action === "CLOSE")) {
-      setUiState("TERMINAL");
-    } else if (lastSystem && lastSystem.action === "FALLBACK") {
-      setUiState("FAILED");
-    }
   }, []);
 
   useEffect(() => {
     if (session) {
       persistSession(session, messages);
     }
-  }, [messages, session]);
+    if (currentChatSessionId && messages.length > 0) {
+      const firstUserMsg = messages.find((m) => m.role === "user");
+      const title = firstUserMsg ? createSessionTitle(firstUserMsg.text) : "New chat";
+      const chatSession: ChatSession = {
+        id: currentChatSessionId,
+        title,
+        createdAt: Date.now(),
+        messages: messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          text: m.text,
+          action: m.action,
+          failureType: m.failureType,
+        })),
+      };
+      addOrUpdateSession(chatSession);
+      setChatSessions(loadChatSessions());
+    }
+  }, [messages, session, currentChatSessionId]);
 
   const lastSystemAction = useMemo(() => {
     const sys = [...messages].reverse().find((m) => m.role === "system");
@@ -133,11 +177,6 @@ export default function ChatPage() {
     return Math.max(0, Math.ceil(remainingMs / 60000));
   }, [session]);
 
-  useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  }, [messages]);
 
   const pushSystemMessage = (text: string, action: Action, failureType?: string | null) => {
     const sysMsg: Message = {
@@ -165,6 +204,10 @@ export default function ChatPage() {
     setUiState("IDLE");
     setSessionExpired(false);
     pendingRequestId.current = pendingRequestId.current + 1;
+    const newChatId = crypto.randomUUID();
+    setCurrentChatSessionId(newChatId);
+    setCurrentSessionId(newChatId);
+    setSidebarOpen(false);
   };
 
   const sendMessage = async (text: string, allowWhenFailed = false) => {
@@ -285,6 +328,16 @@ export default function ChatPage() {
     setUiState("IDLE");
     setSessionExpired(false);
     pendingRequestId.current = pendingRequestId.current + 1;
+    if (currentChatSessionId) {
+      const chatSession: ChatSession = {
+        id: currentChatSessionId,
+        title: "New chat",
+        createdAt: Date.now(),
+        messages: [],
+      };
+      addOrUpdateSession(chatSession);
+      setChatSessions(loadChatSessions());
+    }
   };
 
   const retryLast = () => {
@@ -293,14 +346,18 @@ export default function ChatPage() {
     void sendMessage(lastUserText, true);
   };
 
-  const copyLastResponse = async () => {
-    const lastSystem = [...messages].reverse().find((m) => m.role === "system");
-    if (!lastSystem) return;
+  const copyMessage = async (text: string) => {
     try {
-      await navigator.clipboard?.writeText(lastSystem.text);
+      await navigator.clipboard?.writeText(text);
     } catch {
       pushSystemMessage("Copy failed locally.", "FALLBACK");
     }
+  };
+
+  const copyLastResponse = async () => {
+    const lastSystem = [...messages].reverse().find((m) => m.role === "system");
+    if (!lastSystem) return;
+    await copyMessage(lastSystem.text);
   };
 
   const copyTranscript = async () => {
@@ -313,284 +370,129 @@ export default function ChatPage() {
     }
   };
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!inputDisabled) {
+  const handleSend = () => {
+    if (!inputDisabled && input.trim()) {
+      if (!currentChatSessionId) {
+        const newChatId = crypto.randomUUID();
+        setCurrentChatSessionId(newChatId);
+        setCurrentSessionId(newChatId);
+      }
       void sendMessage(input);
     }
   };
 
-  const renderBadge = (action?: Action) => {
-    if (!action) return null;
-    return <span className="chat-badge">{action}</span>;
+  const handleSelectSession = (sessionId: string) => {
+    const chatSession = getSessionById(sessionId);
+    if (chatSession) {
+      setCurrentChatSessionId(sessionId);
+      setCurrentSessionId(sessionId);
+      setMessages(chatSession.messages);
+      const lastUser = [...chatSession.messages].reverse().find((m) => m.role === "user");
+      if (lastUser) setLastUserText(lastUser.text);
+      const lastSystem = [...chatSession.messages].reverse().find((m) => m.role === "system");
+      if (lastSystem && (lastSystem.action === "REFUSE" || lastSystem.action === "CLOSE")) {
+        setUiState("TERMINAL");
+      } else if (lastSystem && lastSystem.action === "FALLBACK") {
+        setUiState("FAILED");
+      } else {
+        setUiState("IDLE");
+      }
+      setSidebarOpen(false);
+    }
   };
 
+  const handleDeleteSession = (sessionId: string) => {
+    deleteStoredSession(sessionId);
+    setChatSessions(loadChatSessions());
+    if (currentChatSessionId === sessionId) {
+      beginNewSession();
+    }
+  };
+
+
   const lastSystem = useMemo(() => [...messages].reverse().find((m) => m.role === "system"), [messages]);
-  const statusLabel = uiState === "TERMINAL" ? "TERMINAL" : uiState === "FAILED" ? "FAILED" : uiState === "SENDING" ? "SENDING" : "IDLE";
-  const truncatedRid = requestId ? requestId.slice(-8) : null;
-  const failureLabel = lastSystem?.failureType ? lastSystem.failureType : "NONE";
-  const actionLabel = lastSystem?.action ?? "—";
 
   const closed = uiState === "TERMINAL" || (lastSystemAction && closedActions.includes(lastSystemAction));
 
   return (
-    <div className="page-frame">
-      <div className="section-header">
-        <span className="eyebrow">Governed chat</span>
-        <h1>Text-in / text-out, tool-only.</h1>
-        <p>All responses flow through the certified governance pipeline. No retries, no bypasses.</p>
-        <div className="chat-disclaimer" role="note">
-          <p>Not medical, legal, or financial advice. Verify independently. We may enforce rate limits and quotas to prevent abuse.</p>
-        </div>
-        {process.env.NEXT_PUBLIC_ENV !== "production" && (
-          <div className="env-banner" role="status">
-            DEV MODE — Using {process.env.NEXT_PUBLIC_API_BASE_URL ?? "unset"} as API base
-          </div>
-        )}
-        {debugTransport && (
-          <div className="transport-debug" role="status" style={{ fontSize: "0.75rem", background: "#1a1a2e", padding: "0.5rem", borderRadius: "4px", marginTop: "0.5rem", fontFamily: "monospace" }}>
-            <strong>Transport Debug</strong>
-            <div>URL: {transportDebug.lastUrl ?? "—"}</div>
-            <div>Status: {transportDebug.lastStatus ?? "—"}</div>
-            <div>X-Request-ID: {transportDebug.lastRequestId ?? "—"}</div>
-            <div>X-UX-State: {transportDebug.lastUxState ?? "—"}</div>
-            {transportDebug.lastError && <div style={{ color: "#ff6b6b" }}>Error: {transportDebug.lastError}</div>}
-          </div>
-        )}
-      </div>
+    <div className="chat-layout">
+      <ChatSidebar
+        sessions={chatSessions}
+        currentSessionId={currentChatSessionId}
+        onSelectSession={handleSelectSession}
+        onNewChat={beginNewSession}
+        onDeleteSession={handleDeleteSession}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
 
-      <div className="chat-shell">
-        <SystemStatus
-          uxState={uxState}
-          cooldownSeconds={cooldownSeconds}
-          requestId={requestId}
-          onRetry={lastUserText ? () => void sendMessage(lastUserText, true) : undefined}
-        />
-        <div className="state-strip" aria-label="System state">
-          <span>Action: {actionLabel}</span>
-          <span>Status: {statusLabel}</span>
-          <span>Failure: {failureLabel}</span>
-          <span>Session: {sessionExpired ? "EXPIRED" : "ACTIVE"}</span>
-          {remainingMinutes !== null && <span>TTL: {remainingMinutes}m</span>}
-          {truncatedRid ? (
+      <div className="chat-main">
+        <header className="chat-header">
+          <div className="chat-header-left">
             <button
-              type="button"
-              className="rid-copy"
-              onClick={() => {
-                if (requestId) {
-                  void navigator.clipboard?.writeText(requestId);
-                }
-              }}
-              aria-label="Copy request id"
+              className="chat-menu-toggle"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open sidebar"
             >
-              Req ID …{truncatedRid}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
             </button>
-          ) : null}
-        </div>
-        <div className="chat-messages" ref={listRef} aria-live="polite">
-          {messages.length === 0 && <div className="chat-empty">Send a message to begin.</div>}
-          {messages.map((msg) => (
-            <div key={msg.id} className={`chat-row ${msg.role}`}>
-              <div className="chat-meta">
-                <span className="chat-role">{msg.role === "user" ? "You" : "System"}</span>
-                {renderBadge(msg.action)}
+          </div>
+          <div className="chat-header-right">
+            <ChatActionsMenu
+              onRetry={retryLast}
+              onCopyLast={copyLastResponse}
+              onCopyAll={copyTranscript}
+              onReset={resetChat}
+              canRetry={uiState === "FAILED" && !!lastUserText}
+              hasMessages={messages.some((m) => m.role === "system")}
+            />
+          </div>
+        </header>
+
+        <div className="chat-messages-container">
+          <div className="chat-messages-inner">
+            {messages.length === 0 && (
+              <div className="chat-empty-state">Ask anything</div>
+            )}
+            {messages.map((msg) => (
+              <ChatMessage
+                key={msg.id}
+                id={msg.id}
+                role={msg.role}
+                text={msg.text}
+                action={msg.action}
+                failureType={msg.failureType}
+              />
+            ))}
+            {uiState === "SENDING" && (
+              <div className="chat-message system">
+                <div className="chat-message-avatar">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                </div>
+                <div className="chat-message-content">
+                  <div className="chat-message-role">Assistant</div>
+                  <div className="chat-message-text">Thinking...</div>
+                </div>
               </div>
-              <div className="chat-bubble">
-                <p className="chat-text">{msg.text}</p>
-                {msg.failureType && <span className="chat-note">Failure: {msg.failureType}</span>}
-              </div>
-            </div>
-          ))}
-          {closed && <div className="chat-note closed-note">Conversation closed.</div>}
+            )}
+          </div>
         </div>
 
-        <form className="chat-input-row" onSubmit={handleSubmit}>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={inputDisabled ? "Interaction closed" : "Type a governed prompt..."}
-            disabled={inputDisabled}
-          />
-          <button type="submit" disabled={sendDisabled}>
-            {uiState === "SENDING" ? "Sending..." : "Send"}
-          </button>
-        </form>
-        {uiState === "FAILED" && <div className="chat-note limit-note">Session encountered a failure; you may retry.</div>}
-        {closed && <div className="chat-note closed-note">This session is closed by the system’s governance rules.</div>}
-        {sessionExpired && <div className="chat-note closed-note">Session expired. Start a new session to continue.</div>}
-        <div className="chat-controls">
-          <button type="button" onClick={resetChat}>
-            Reset chat
-          </button>
-          <button type="button" onClick={retryLast} disabled={uiState !== "FAILED" || !lastUserText}>
-            Retry last
-          </button>
-          <button type="button" onClick={copyLastResponse} disabled={!messages.some((m) => m.role === "system")}>
-            Copy last response
-          </button>
-          <button type="button" onClick={copyTranscript} disabled={messages.length === 0}>
-            Copy conversation
-          </button>
-          <button type="button" onClick={beginNewSession}>
-            New session
-          </button>
-        </div>
+        <ChatComposer
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSend}
+          disabled={inputDisabled}
+          isSending={uiState === "SENDING"}
+        />
       </div>
-
-      <style jsx>{`
-        .chat-shell {
-          border: 1px solid #1f2937;
-          border-radius: 16px;
-          background: #0b0f1a;
-          min-height: 520px;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-        }
-        .chat-messages {
-          flex: 1;
-          overflow-y: auto;
-          padding: 16px;
-          display: grid;
-          gap: 12px;
-        }
-        .state-strip {
-          display: flex;
-          gap: 12px;
-          padding: 10px 16px;
-          border-bottom: 1px solid #1f2937;
-          background: #0d1320;
-          color: #cbd5e1;
-          font-size: 12px;
-          flex-wrap: wrap;
-        }
-        .state-strip .rid-copy {
-          border: 1px solid #1f2937;
-          background: #0f172a;
-          color: #e5e7eb;
-          border-radius: 8px;
-          padding: 4px 8px;
-          font-size: 12px;
-        }
-        .state-strip .rid-copy:hover {
-          background: #111827;
-        }
-        .chat-row {
-          display: grid;
-          gap: 6px;
-        }
-        .chat-row.user .chat-bubble {
-          background: #111827;
-          align-self: start;
-        }
-        .chat-row.system .chat-bubble {
-          background: #0d1930;
-        }
-        .chat-meta {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 12px;
-          color: #9ca3af;
-        }
-        .chat-role {
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-        .chat-bubble {
-          border-radius: 12px;
-          padding: 12px 14px;
-          border: 1px solid #1f2937;
-          color: #e5e7eb;
-          line-height: 1.45;
-        }
-        .chat-text {
-          white-space: pre-wrap;
-          margin: 0;
-        }
-        .chat-badge {
-          display: inline-flex;
-          align-items: center;
-          padding: 2px 8px;
-          border-radius: 9999px;
-          border: 1px solid #374151;
-          color: #cbd5e1;
-          font-size: 11px;
-          letter-spacing: 0.04em;
-        }
-        .chat-note {
-          display: block;
-          margin-top: 6px;
-          font-size: 12px;
-          color: #fbbf24;
-        }
-        .closed-note {
-          color: #9ca3af;
-        }
-        .chat-empty {
-          text-align: center;
-          color: #9ca3af;
-          padding: 24px 0;
-        }
-        .chat-input-row {
-          display: grid;
-          grid-template-columns: 1fr auto;
-          gap: 10px;
-          padding: 12px 16px;
-          border-top: 1px solid #1f2937;
-          background: #0b0f1a;
-        }
-        .chat-input-row input {
-          width: 100%;
-          border-radius: 10px;
-          border: 1px solid #1f2937;
-          background: #0d1320;
-          color: #e5e7eb;
-          padding: 10px 12px;
-        }
-        .chat-input-row button {
-          border-radius: 10px;
-          border: 1px solid #2563eb;
-          background: #1d4ed8;
-          color: #e5e7eb;
-          padding: 10px 14px;
-        }
-        .chat-input-row button:disabled,
-        .chat-input-row input:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-        .limit-note {
-          padding: 6px 16px 12px;
-        }
-        .chat-controls {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          padding: 10px 16px 0;
-        }
-        .chat-controls button {
-          border-radius: 10px;
-          border: 1px solid #1f2937;
-          background: #0d1320;
-          color: #e5e7eb;
-          padding: 8px 10px;
-        }
-        .chat-controls button:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-        .chat-disclaimer {
-          margin-top: 8px;
-          padding: 10px 12px;
-          border: 1px solid #1f2937;
-          border-radius: 10px;
-          background: #0d1320;
-          color: #cbd5e1;
-          font-size: 13px;
-        }
-      `}</style>
     </div>
   );
 }

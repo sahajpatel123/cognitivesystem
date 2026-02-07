@@ -1,18 +1,18 @@
 import Link from "next/link";
-import { PrimaryMetrics } from "../components/primary-metrics";
+import { PrimaryMetrics } from "../../components/primary-metrics";
 import {
   AUDIT_RUNS,
   ENFORCEMENT_ENTRIES,
   INITIAL_RUN,
   NAV_ITEMS,
   SESSION_BASELINE,
-} from "../lib/static-data";
+} from "../../lib/static-data";
 import {
   formatPipelineState,
   formatRiskClassification,
   formatSecondsAsClock,
   operationalPatternLabel,
-} from "../lib/formatters";
+} from "../../lib/formatters";
 
 const overviewDirectory = NAV_ITEMS.filter((item) => item.href !== "/");
 
