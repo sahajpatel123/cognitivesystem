@@ -78,7 +78,12 @@ export default function ChatPage() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [currentChatSessionId, setCurrentChatSessionId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const [idleHeadline, setIdleHeadline] = useState("Ready when you are.");
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
   const pendingRequestId = useRef(0);
 
   // Transport debug state (dev-only, no user text)
@@ -110,6 +115,24 @@ export default function ChatPage() {
     }, 1000);
     return () => clearInterval(id);
   }, [cooldownEndsAtMs]);
+
+  useEffect(() => {
+    setMounted(true);
+    const headlines = ["Ready to dive in?", "How can I help?", "Ready when you are."];
+    const randomHeadline = headlines[Math.floor(Math.random() * headlines.length)];
+    setIdleHeadline(randomHeadline);
+    
+    if (typeof window !== "undefined") {
+      const collapsed = localStorage.getItem("cs_chat_sidebar_collapsed") === "1";
+      setSidebarCollapsed(collapsed);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mounted && typeof window !== "undefined") {
+      localStorage.setItem("cs_chat_sidebar_collapsed", sidebarCollapsed ? "1" : "0");
+    }
+  }, [sidebarCollapsed, mounted]);
 
   useEffect(() => {
     const sessions = loadChatSessions();
@@ -413,9 +436,21 @@ export default function ChatPage() {
   const lastSystem = useMemo(() => [...messages].reverse().find((m) => m.role === "system"), [messages]);
 
   const closed = uiState === "TERMINAL" || (lastSystemAction && closedActions.includes(lastSystemAction));
+  const hasMessages = messages.length > 0;
+  const idleMode = !hasMessages && !isComposerFocused;
+
+  const handleComposerFocus = () => {
+    setIsComposerFocused(true);
+  };
+
+  const handleComposerBlur = () => {
+    if (messages.length === 0) {
+      setIsComposerFocused(false);
+    }
+  };
 
   return (
-    <div className="chat-layout">
+    <div className={`chat-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${idleMode ? "idle-mode" : ""}`}>
       <ChatSidebar
         sessions={chatSessions}
         currentSessionId={currentChatSessionId}
@@ -424,7 +459,22 @@ export default function ChatPage() {
         onDeleteSession={handleDeleteSession}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
+
+      {sidebarCollapsed && (
+        <button
+          className="sidebar-toggle-floating"
+          onClick={() => setSidebarCollapsed(false)}
+          aria-label="Expand sidebar"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+          </svg>
+        </button>
+      )}
 
       <div className="chat-main">
         <header className="chat-header">
@@ -453,45 +503,69 @@ export default function ChatPage() {
           </div>
         </header>
 
-        <div className="chat-messages-container">
-          <div className="chat-messages-inner">
-            {messages.length === 0 && (
-              <div className="chat-empty-state">Ask anything</div>
-            )}
-            {messages.map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                id={msg.id}
-                role={msg.role}
-                text={msg.text}
-                action={msg.action}
-                failureType={msg.failureType}
+        {idleMode ? (
+          <div className="idle-stage">
+            <div className="idle-cluster">
+              <div className="idle-headline">{idleHeadline}</div>
+              <ChatComposer
+                value={input}
+                onChange={setInput}
+                onSubmit={handleSend}
+                disabled={inputDisabled}
+                isSending={uiState === "SENDING"}
+                onFocus={handleComposerFocus}
+                onBlur={handleComposerBlur}
+                attachments={attachments}
+                onAttachmentsChange={setAttachments}
               />
-            ))}
-            {uiState === "SENDING" && (
-              <div className="chat-message system">
-                <div className="chat-message-avatar">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                </div>
-                <div className="chat-message-content">
-                  <div className="chat-message-role">Assistant</div>
-                  <div className="chat-message-text">Thinking...</div>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="chat-messages-container">
+              <div className="chat-messages-inner">
+                {messages.map((msg) => (
+                  <ChatMessage
+                    key={msg.id}
+                    id={msg.id}
+                    role={msg.role}
+                    text={msg.text}
+                    action={msg.action}
+                    failureType={msg.failureType}
+                  />
+                ))}
+                {uiState === "SENDING" && (
+                  <div className="chat-message system">
+                    <div className="chat-message-avatar">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    </div>
+                    <div className="chat-message-content">
+                      <div className="chat-message-role">Assistant</div>
+                      <div className="chat-message-text">Thinking...</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
 
-        <ChatComposer
-          value={input}
-          onChange={setInput}
-          onSubmit={handleSend}
-          disabled={inputDisabled}
-          isSending={uiState === "SENDING"}
-        />
+            <div className="composer-shell">
+              <ChatComposer
+                value={input}
+                onChange={setInput}
+                onSubmit={handleSend}
+                disabled={inputDisabled}
+                isSending={uiState === "SENDING"}
+                onFocus={handleComposerFocus}
+                onBlur={handleComposerBlur}
+                attachments={attachments}
+                onAttachmentsChange={setAttachments}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
