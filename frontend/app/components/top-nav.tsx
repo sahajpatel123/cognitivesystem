@@ -9,7 +9,7 @@ import { useAuth } from "../lib/useAuth";
 
 const transition = { duration: 0.18, ease: [0.33, 0.11, 0.22, 1] };
 
-type DropdownKey = "product" | "company" | null;
+type DropdownKey = "company" | null;
 
 export function TopNav() {
   const pathname = usePathname();
@@ -60,30 +60,6 @@ export function TopNav() {
           <Link className={isActive("/") ? "active" : ""} href="/">
             Home
           </Link>
-
-          <div
-            className="nav-dropdown"
-            onMouseEnter={() => handleEnter("product")}
-            onMouseLeave={handleLeave}
-            onFocus={() => handleEnter("product")}
-            onBlur={(event) => {
-              const next = event.relatedTarget as Node | null;
-              if (!next || !(event.currentTarget as HTMLElement).contains(next)) {
-                handleLeave();
-              }
-            }}
-          >
-            <button
-              type="button"
-              className={`nav-trigger ${openKey === "product" ? "active" : ""}`}
-              aria-haspopup="true"
-              aria-expanded={openKey === "product"}
-              onClick={() => toggle("product")}
-            >
-              Product <span className="nav-caret" />
-            </button>
-            {renderDropdown("product", PRODUCT_NAV_LINKS)}
-          </div>
 
           <Link className={isActive("/pricing") ? "active" : ""} href="/pricing">
             Pricing

@@ -46,10 +46,18 @@ export default function ContactPage() {
     }, 1500);
   };
 
+  const [copiedSecurity, setCopiedSecurity] = useState(false);
+
   const copyEmail = () => {
     navigator.clipboard.writeText("hello@cognitivesystem.ai");
     setCopiedEmail(true);
     setTimeout(() => setCopiedEmail(false), 2000);
+  };
+
+  const copySecuritySubject = () => {
+    navigator.clipboard.writeText("SECURITY");
+    setCopiedSecurity(true);
+    setTimeout(() => setCopiedSecurity(false), 2000);
   };
 
   return (
@@ -88,7 +96,7 @@ export default function ContactPage() {
                 color: "#1e293b",
               }}
             >
-              Talk to the team.
+              Talk to Cognitive System.
             </h1>
             <p
               style={{
@@ -98,7 +106,7 @@ export default function ContactPage() {
                 maxWidth: "720px",
               }}
             >
-              We reply with clarity. No scripts.
+              General questions, partnerships, and security reports. We reply clearly.
             </p>
           </motion.div>
         </div>
@@ -114,7 +122,7 @@ export default function ContactPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
               gap: "24px",
               marginBottom: "80px",
             }}
@@ -145,20 +153,11 @@ export default function ContactPage() {
                   fontSize: "15px",
                   lineHeight: 1.6,
                   color: "rgba(30, 41, 59, 0.8)",
-                  marginBottom: "12px",
+                  marginBottom: "16px",
                   fontFamily: "monospace",
                 }}
               >
                 hello@cognitivesystem.ai
-              </p>
-              <p
-                style={{
-                  fontSize: "13px",
-                  color: "rgba(30, 41, 59, 0.6)",
-                  marginBottom: "16px",
-                }}
-              >
-                Security disclosures welcome.
               </p>
               <button
                 onClick={copyEmail}
@@ -178,7 +177,66 @@ export default function ContactPage() {
               </button>
             </div>
 
-            {/* Social Card */}
+            {/* Security Card */}
+            <div
+              style={{
+                padding: "32px",
+                background: "rgba(255, 255, 255, 0.6)",
+                backdropFilter: "blur(20px)",
+                border: "1px solid rgba(255, 255, 255, 0.4)",
+                borderRadius: "16px",
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.06)",
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 600,
+                  marginBottom: "12px",
+                  color: "#1e293b",
+                }}
+              >
+                Security
+              </h3>
+              <p
+                style={{
+                  fontSize: "15px",
+                  lineHeight: 1.6,
+                  color: "rgba(30, 41, 59, 0.7)",
+                  marginBottom: "8px",
+                }}
+              >
+                Report vulnerabilities responsibly.
+              </p>
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "rgba(30, 41, 59, 0.6)",
+                  marginBottom: "16px",
+                  fontFamily: "monospace",
+                }}
+              >
+                Use subject: SECURITY
+              </p>
+              <button
+                onClick={copySecuritySubject}
+                style={{
+                  padding: "10px 20px",
+                  background: copiedSecurity ? "#10b981" : "rgba(255, 255, 255, 0.8)",
+                  color: copiedSecurity ? "white" : "#3b82f6",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  border: copiedSecurity ? "none" : "1px solid rgba(59, 130, 246, 0.3)",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                {copiedSecurity ? "Copied!" : "Copy security subject"}
+              </button>
+            </div>
+
+            {/* Updates Card */}
             <div
               style={{
                 padding: "32px",
@@ -224,7 +282,7 @@ export default function ContactPage() {
                     transition: "all 0.2s ease",
                   }}
                 >
-                  X / Twitter
+                  X
                 </a>
                 <a
                   href="#"
@@ -247,29 +305,37 @@ export default function ContactPage() {
           </div>
 
           {/* Contact Form */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.6 }}
+          <div
             style={{
-              padding: "48px",
-              background: "rgba(255, 255, 255, 0.6)",
-              backdropFilter: "blur(20px)",
-              border: "1px solid rgba(255, 255, 255, 0.4)",
-              borderRadius: "20px",
-              boxShadow: "0 12px 32px rgba(0, 0, 0, 0.08)",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+              gap: "32px",
+              alignItems: "start",
             }}
           >
-            <h2
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 0.6 }}
               style={{
-                fontSize: "28px",
-                fontWeight: 600,
-                marginBottom: "32px",
-                color: "#1e293b",
+                padding: "48px",
+                background: "rgba(255, 255, 255, 0.6)",
+                backdropFilter: "blur(20px)",
+                border: "1px solid rgba(255, 255, 255, 0.4)",
+                borderRadius: "20px",
+                boxShadow: "0 12px 32px rgba(0, 0, 0, 0.08)",
               }}
             >
-              Send us a message
-            </h2>
+              <h2
+                style={{
+                  fontSize: "28px",
+                  fontWeight: 600,
+                  marginBottom: "32px",
+                  color: "#1e293b",
+                }}
+              >
+                Send us a message
+              </h2>
             <form onSubmit={handleSubmit}>
               <div style={{ marginBottom: "24px" }}>
                 <label
@@ -470,28 +536,106 @@ export default function ContactPage() {
               </button>
             </form>
           </motion.div>
+
+          {/* What to Include Microcopy */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6, duration: 0.6 }}
+            style={{
+              padding: "32px",
+              background: "rgba(255, 255, 255, 0.5)",
+              backdropFilter: "blur(20px)",
+              border: "1px solid rgba(255, 255, 255, 0.4)",
+              borderRadius: "16px",
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.06)",
+            }}
+          >
+            <h3
+              style={{
+                fontSize: "18px",
+                fontWeight: 600,
+                marginBottom: "20px",
+                color: "#1e293b",
+              }}
+            >
+              What to include
+            </h3>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              <li
+                style={{
+                  fontSize: "15px",
+                  lineHeight: 1.8,
+                  color: "rgba(30, 41, 59, 0.8)",
+                  paddingLeft: "24px",
+                  position: "relative",
+                  marginBottom: "12px",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: "8px",
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: "#3b82f6",
+                  }}
+                />
+                What you're trying to do
+              </li>
+              <li
+                style={{
+                  fontSize: "15px",
+                  lineHeight: 1.8,
+                  color: "rgba(30, 41, 59, 0.8)",
+                  paddingLeft: "24px",
+                  position: "relative",
+                  marginBottom: "12px",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: "8px",
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: "#3b82f6",
+                  }}
+                />
+                Constraints (privacy, tone, safety)
+              </li>
+              <li
+                style={{
+                  fontSize: "15px",
+                  lineHeight: 1.8,
+                  color: "rgba(30, 41, 59, 0.8)",
+                  paddingLeft: "24px",
+                  position: "relative",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: "8px",
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: "#3b82f6",
+                  }}
+                />
+                Any links / context
+              </li>
+            </ul>
+          </motion.div>
+        </div>
         </motion.div>
       </section>
 
-      {/* Security Note */}
-      <section style={{ padding: "0 24px 120px", maxWidth: "1100px", margin: "0 auto" }}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7, duration: 0.6 }}
-          style={{
-            padding: "24px 32px",
-            background: "rgba(239, 246, 255, 0.5)",
-            border: "1px solid rgba(59, 130, 246, 0.2)",
-            borderRadius: "12px",
-            textAlign: "center",
-          }}
-        >
-          <p style={{ fontSize: "14px", color: "rgba(30, 41, 59, 0.8)", margin: 0 }}>
-            <strong>Security:</strong> For sensitive reports, include 'SECURITY' in the subject.
-          </p>
-        </motion.div>
-      </section>
     </motion.div>
   );
 }
