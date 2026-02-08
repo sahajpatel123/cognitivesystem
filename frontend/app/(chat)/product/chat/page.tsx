@@ -33,12 +33,21 @@ import {
 } from "./_components";
 import "./chatgpt.css";
 
+type MessageStatus = "pending" | "done" | "error" | undefined;
+
 type Message = {
   id: string;
-  role: "user" | "system";
+  role: "user" | "assistant" | "system";
   text: string;
+  status?: MessageStatus;
   action?: Action;
   failureType?: string | null;
+  debug?: {
+    statusCode?: number | null;
+    contentType?: string | null;
+    durationMs?: number | null;
+    rawPreview?: string | null;
+  };
 };
 
 const closedActions: Action[] = ["CLOSE", "REFUSE", "BLOCK"];
@@ -145,10 +154,12 @@ export default function ChatPage() {
         setMessages(currentSession.messages);
         const lastUser = [...currentSession.messages].reverse().find((m) => m.role === "user");
         if (lastUser) setLastUserText(lastUser.text);
-        const lastSystem = [...currentSession.messages].reverse().find((m) => m.role === "system");
-        if (lastSystem && (lastSystem.action === "REFUSE" || lastSystem.action === "CLOSE")) {
+        const lastAssistant = [...currentSession.messages]
+          .reverse()
+          .find((m) => m.role === "assistant" || m.role === "system");
+        if (lastAssistant && (lastAssistant.action === "REFUSE" || lastAssistant.action === "CLOSE")) {
           setUiState("TERMINAL");
-        } else if (lastSystem && lastSystem.action === "FALLBACK") {
+        } else if (lastAssistant && lastAssistant.action === "FALLBACK") {
           setUiState("FAILED");
         }
       }
@@ -174,6 +185,7 @@ export default function ChatPage() {
           text: m.text,
           action: m.action,
           failureType: m.failureType,
+          status: m.status,
         })),
       };
       addOrUpdateSession(chatSession);
@@ -182,7 +194,7 @@ export default function ChatPage() {
   }, [messages, session, currentChatSessionId]);
 
   const lastSystemAction = useMemo(() => {
-    const sys = [...messages].reverse().find((m) => m.role === "system");
+    const sys = [...messages].reverse().find((m) => m.role === "assistant" || m.role === "system");
     return sys?.action;
   }, [messages]);
 
@@ -192,7 +204,6 @@ export default function ChatPage() {
     uiState === "TERMINAL" ||
     (lastSystemAction && closedActions.includes(lastSystemAction)) ||
     cooldownActive;
-  const sendDisabled = inputDisabled || cooldownActive || input.trim().length === 0;
 
   const remainingMinutes = useMemo(() => {
     if (!session) return null;
@@ -233,6 +244,39 @@ export default function ChatPage() {
     setSidebarOpen(false);
   };
 
+  const extractMessageFromJson = (obj: any): { content: string; action?: string | null; failureType?: string | null } => {
+    const tryPath = (path: Array<string | number>): any => {
+      let cur: any = obj;
+      for (const key of path) {
+        if (cur == null) return undefined;
+        cur = cur[key as keyof typeof cur];
+      }
+      return cur;
+    };
+    const candidates: Array<Array<string | number>> = [
+      ["reply"],
+      ["message"],
+      ["content"],
+      ["output"],
+      ["data", "reply"],
+      ["data", "message"],
+      ["data", "content"],
+      ["result", "content"],
+      ["rendered_text"],
+    ];
+    for (const path of candidates) {
+      const val = tryPath(path);
+      if (typeof val === "string" && val.trim().length > 0) {
+        return { content: val, action: obj?.action ?? null, failureType: obj?.failure_type ?? obj?.failureType ?? null };
+      }
+    }
+    return { content: "", action: obj?.action ?? null, failureType: obj?.failure_type ?? obj?.failureType ?? null };
+  };
+
+  const replaceMessageById = (id: string, updater: (msg: Message) => Message): void => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? updater(m) : m)));
+  };
+
   const sendMessage = async (text: string, allowWhenFailed = false) => {
     if (!session) {
       beginNewSession();
@@ -256,19 +300,40 @@ export default function ChatPage() {
     const trimmed = requestBody.user_text;
     setLastUserText(trimmed);
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: trimmed };
-    setMessages((prev) => [...prev, userMsg]);
+    const pendingAssistantId = `pending-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const pendingAssistant: Message = { id: pendingAssistantId, role: "assistant", text: "", status: "pending" };
+    setMessages((prev) => [...prev, userMsg, pendingAssistant]);
     setInput("");
     setUiState("SENDING");
     const currentRequestId = pendingRequestId.current + 1;
     pendingRequestId.current = currentRequestId;
+    const setUiStateForAction = (actionVal?: Action | null) => {
+        if (actionVal === "REFUSE" || actionVal === "CLOSE" || actionVal === "BLOCK") {
+          setUiState("TERMINAL");
+        } else if (actionVal === "FALLBACK" || actionVal === "FAIL_GRACEFULLY") {
+          setUiState("FAILED");
+        } else {
+          setUiState("IDLE");
+        }
+      };
     try {
       const fetchUrl = `${apiBase}/api/chat`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      const start = Date.now();
+      if (debugTransport) {
+        console.log("[TransportDebug] request start", { url: fetchUrl, start });
+      }
       const res = await fetch(fetchUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
         body: JSON.stringify(requestBody),
       });
+      clearTimeout(timeout);
+      const duration = Date.now() - start;
 
       // Transport debug (structure-only, no user text)
       if (debugTransport) {
@@ -293,34 +358,154 @@ export default function ChatPage() {
         setCooldownSeconds(null);
         setCooldownEndsAtMs(null);
       }
-      if (!res.ok) {
-        let friendly = "Request failed. Please retry.";
-        if (res.status === 415) {
-          friendly = "Content type not supported. Use application/json.";
-        } else if (res.status === 429) {
-          friendly = "Rate limit or quota reached. Please wait and try again.";
-        } else if (res.status >= 500) {
-          friendly = "Service is unavailable right now. Please try again.";
+      const contentType = res.headers.get("content-type") || "";
+      const devLog = () => {
+        const status = res.status;
+        if (debugTransport) {
+          console.log("[TransportDebug] response", { status, contentType, duration });
         }
-        pushSystemMessage(friendly, "FALLBACK");
+      };
+      devLog();
+
+      const markError = (message: string, rawPreview: string, statusCode: number | null) => {
+        replaceMessageById(pendingAssistantId, (msg) => ({
+          ...msg,
+          text: message,
+          status: "error",
+          debug: {
+            statusCode,
+            contentType,
+            durationMs: duration,
+            rawPreview: rawPreview.slice(0, 1500),
+          },
+        }));
+        pushSystemMessage(message, "FALLBACK");
         setUiState("FAILED");
+      };
+
+      if (contentType.includes("text/event-stream") && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let accumulated = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) {
+            const dataLine = part
+              .split("\n")
+              .map((l) => l.trim())
+              .find((l) => l.startsWith("data:"));
+            if (dataLine) {
+              const token = dataLine.replace(/^data:\s*/, "");
+              if (token) {
+                accumulated += token;
+                const currentContent = accumulated;
+                replaceMessageById(pendingAssistantId, (msg) => ({ ...msg, text: currentContent, status: "pending" }));
+              }
+            }
+          }
+        }
+        const finalContent = accumulated || buffer.trim();
+        if (!finalContent) {
+          markError("Empty response body (200).", "", res.status);
+        } else {
+          const preview = finalContent.slice(0, 1500);
+          if (debugTransport) {
+            console.log("[TransportDebug] sse final", {
+              status: res.status,
+              contentType,
+              duration,
+              rawLength: finalContent.length,
+              preview,
+            });
+          }
+          replaceMessageById(pendingAssistantId, (msg) => ({
+            ...msg,
+            text: finalContent,
+            status: "done",
+            debug: {
+              statusCode: res.status,
+              contentType,
+              durationMs: duration,
+              rawPreview: preview,
+            },
+          }));
+          setUiState("IDLE");
+        }
         return;
       }
-      const raw = await res.json();
+
+      const raw = await res.text();
+      const rawPreview = raw.slice(0, 1500);
+      if (debugTransport) {
+        console.log("[TransportDebug] response body", {
+          status: res.status,
+          contentType,
+          duration,
+          rawLength: raw.length,
+          preview: rawPreview,
+        });
+      }
       if (pendingRequestId.current !== currentRequestId) {
         return;
       }
-      const data: SafeChatResponse = validateChatResponse(raw);
-      const action = data.action;
-      pushSystemMessage(data.rendered_text, action, data.failure_type ?? null);
-      if (action === "REFUSE" || action === "CLOSE" || action === "BLOCK") {
-        setUiState("TERMINAL");
-      } else if (action === "FALLBACK" || action === "FAIL_GRACEFULLY") {
-        setUiState("FAILED");
-      } else {
-        // ANSWER, ASK_ONE_QUESTION, ASK_CLARIFY, ANSWER_DEGRADED -> allow continued input
-        setUiState("IDLE");
+      const rawTrim = raw.trim();
+      if (!res.ok) {
+        const friendly = rawTrim || "Request failed. Please retry.";
+        markError(friendly, raw, res.status);
+        return;
       }
+      let parsed: any = null;
+      let extracted = "";
+      try {
+        parsed = JSON.parse(raw);
+        const { content, action, failureType } = extractMessageFromJson(parsed);
+        extracted = content;
+        if (!extracted && rawTrim) {
+          extracted = rawTrim;
+        }
+        replaceMessageById(pendingAssistantId, (msg) => ({
+          ...msg,
+          text: extracted || "Unexpected response shape",
+          status: extracted ? "done" : "error",
+          action: (action as Action | undefined) ?? msg.action,
+          failureType: (failureType as string | null | undefined) ?? msg.failureType,
+          debug: {
+            statusCode: res.status,
+            contentType,
+            durationMs: duration,
+            rawPreview,
+          },
+        }));
+      } catch (e) {
+        if (!rawTrim) {
+          markError("Empty response body (200).", raw, res.status);
+          return;
+        }
+        extracted = rawTrim;
+        replaceMessageById(pendingAssistantId, (msg) => ({
+          ...msg,
+          text: extracted,
+          status: "done",
+          debug: {
+            statusCode: res.status,
+            contentType,
+            durationMs: duration,
+            rawPreview,
+          },
+        }));
+      }
+
+      if (!extracted || extracted === "Unexpected response shape") {
+        markError("Unexpected response shape", raw, res.status);
+        return;
+      }
+      setUiState("IDLE");
     } catch (err) {
       if (pendingRequestId.current !== currentRequestId) {
         return;
@@ -331,6 +516,11 @@ export default function ChatPage() {
         setTransportDebug((prev) => ({ ...prev, lastError: errMsg }));
         console.log("[TransportDebug] error", { error: errMsg });
       }
+      replaceMessageById(pendingAssistantId, (msg) => ({
+        ...msg,
+        text: "Request failed. Please retry.",
+        status: "error",
+      }));
       pushSystemMessage("Request failed. Please retry.", "FALLBACK");
       setUiState("FAILED");
     } finally {
@@ -530,24 +720,12 @@ export default function ChatPage() {
                     id={msg.id}
                     role={msg.role}
                     text={msg.text}
+                    status={msg.status}
                     action={msg.action}
                     failureType={msg.failureType}
+                    debug={msg.debug}
                   />
                 ))}
-                {uiState === "SENDING" && (
-                  <div className="chat-message system">
-                    <div className="chat-message-avatar">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                      </svg>
-                    </div>
-                    <div className="chat-message-content">
-                      <div className="chat-message-role">Assistant</div>
-                      <div className="chat-message-text">Thinking...</div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 

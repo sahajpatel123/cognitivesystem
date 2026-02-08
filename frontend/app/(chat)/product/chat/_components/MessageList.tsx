@@ -4,10 +4,17 @@ import { Action } from "../contract_runtime";
 
 type Message = {
   id: string;
-  role: "user" | "system";
+  role: "user" | "assistant" | "system";
   text: string;
+  status?: "pending" | "done" | "error" | undefined;
   action?: Action;
   failureType?: string | null;
+  debug?: {
+    statusCode?: number | null;
+    contentType?: string | null;
+    durationMs?: number | null;
+    rawPreview?: string | null;
+  };
 };
 
 type MessageListProps = {
@@ -39,8 +46,10 @@ export function MessageList({ messages, isSending, isClosed, onCopyMessage }: Me
           id={msg.id}
           role={msg.role}
           text={msg.text}
+          status={msg.status}
           action={msg.action}
           failureType={msg.failureType}
+          debug={msg.debug}
           onCopy={onCopyMessage}
         />
       ))}

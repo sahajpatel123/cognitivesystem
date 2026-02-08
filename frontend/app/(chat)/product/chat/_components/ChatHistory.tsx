@@ -7,10 +7,11 @@ export type ChatSession = {
   createdAt: number;
   messages: Array<{
     id: string;
-    role: "user" | "system";
+    role: "user" | "assistant" | "system";
     text: string;
     action?: Action;
     failureType?: string | null;
+    status?: "pending" | "done" | "error" | undefined;
   }>;
 };
 
