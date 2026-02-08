@@ -5,7 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { MacbookHero } from "../components/macbook-hero";
 import { SectionReveal } from "../components/section-reveal";
-import { SocialsCelebration } from "../components/socials-celebration";
+import { RollingTape } from "../components/rolling-tape";
+import { TrustSignals } from "../components/trust-signals";
 
 const signalMetrics = [
   {
@@ -176,12 +177,9 @@ export default function HomePage() {
         </div>
       </SectionReveal>
 
-      <SectionReveal className="socials-section">
-        <div className="socials-box" aria-label="Social channels placeholder">
-          <SocialsCelebration />
-          <span>Socials</span>
-        </div>
-      </SectionReveal>
+      <RollingTape />
+
+      <TrustSignals />
 
     </motion.main>
   );
