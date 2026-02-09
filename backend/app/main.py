@@ -141,6 +141,7 @@ if not _cors_origins_safe:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins_safe,
+    allow_origin_regex=r"^https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -641,6 +642,12 @@ async def ready() -> JSONResponse:
         )
     except Exception:
         return JSONResponse(status_code=503, content={"status": "not_ready", "reason": "sanitized"})
+
+
+@app.options("/api/chat")
+async def chat_options() -> Response:
+    """Handle CORS preflight for /api/chat"""
+    return Response(status_code=204)
 
 
 @app.post("/api/chat", response_model=ContractChatResponse)

@@ -362,6 +362,10 @@ async def waf_dependency(request: Request, identity: IdentityContext = Depends(i
     if request.url.path not in WAF_ENFORCE_ROUTES:
         return identity
 
+    # Allow OPTIONS preflight to pass through without validation
+    if request.method == "OPTIONS":
+        return identity
+
     try:
         request.state.waf_meta = {"decision": "allow", "error_code": None, "limiter_backend": "db"}
     except Exception:
