@@ -190,7 +190,7 @@ def test_chat_response_shape():
                 result.assert_in("ux_state", body, "Success response should have 'ux_state'")
                 # Verify action is one of the allowed values
                 allowed_actions = ["ANSWER", "ASK_ONE_QUESTION", "REFUSE", "CLOSE", "FALLBACK",
-                                   "ANSWER_DEGRADED", "ASK_CLARIFY", "FAIL_GRACEFULLY", "BLOCK"]
+                                   "ANSWER_DEGRADED", "FAIL_GRACEFULLY", "BLOCK"]
                 result.assert_in(body.get("action"), allowed_actions, 
                                 f"action should be valid (got {body.get('action')})")
             else:

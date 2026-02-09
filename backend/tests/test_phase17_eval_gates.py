@@ -105,7 +105,7 @@ class TestDeterministicReplayGate:
         # Deterministic deltas
         deltas_sequence = [
             [PatchOp(op="set", path="decision.rationale", value="Refined rationale")],
-            [PatchOp(op="set", path="decision.action", value="ASK_CLARIFY")],
+            [PatchOp(op="set", path="decision.action", value="ANSWER")],
         ]
         
         # Run 20 times
@@ -178,7 +178,7 @@ class TestTwoStrikesDowngradeGate:
         deltas_sequence = [
             [PatchOp(op="set", path="decision.forbidden_field", value="hack")],  # Invalid
             [PatchOp(op="set", path="decision.rationale", value="Valid update")],  # Valid
-            [PatchOp(op="set", path="decision.action", value="ASK_CLARIFY")],  # Valid
+            [PatchOp(op="set", path="decision.action", value="ANSWER")],  # Valid
         ]
         
         runner = make_deterministic_runner(deltas_sequence)
@@ -227,7 +227,7 @@ class TestTwoStrikesDowngradeGate:
         deltas_sequence = [
             [PatchOp(op="set", path="decision.forbidden1", value="hack1")],  # Invalid
             [PatchOp(op="set", path="decision.forbidden2", value="hack2")],  # Invalid
-            [PatchOp(op="set", path="decision.action", value="ASK_CLARIFY")],  # Should not execute
+            [PatchOp(op="set", path="decision.action", value="ANSWER")],  # Should not execute
         ]
         
         runner = make_deterministic_runner(deltas_sequence)

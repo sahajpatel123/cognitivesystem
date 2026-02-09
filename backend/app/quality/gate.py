@@ -23,11 +23,16 @@ def evaluate_quality(rendered_text: str, force_fail: bool = False) -> tuple[bool
 
 
 def clarifying_prompt() -> str:
+    """
+    DEPRECATED: This prompt is no longer used to block answers.
+    System now always answers first and asks clarifying questions within the answer if needed.
+    """
     return (
-        "I want to give a precise answer. Please share:\n"
-        "- What outcome you need\n"
-        "- Any constraints or examples\n"
-        "- Deadline or priority"
+        "Always answer the user's question immediately with the best possible helpful response. "
+        "If additional info would improve accuracy, ask up to 3 clarifying questions at the end "
+        "under a small heading like 'Quick questions (optional):'. "
+        "Do NOT ask for outcome/constraints/deadline as a generic template. "
+        "Do NOT refuse or stall. Be concise and actionable."
     )
 
 

@@ -22,6 +22,8 @@ def test_quality_gate_placeholder_triggers_clarify(monkeypatch):
         return "Providing a concise response based on limited details. Placeholder."
 
     result = asyncio.run(run_step5(ctx, invoke_attempt))
-    assert result.action == ChatAction.ASK_CLARIFY
+    # Quality gate no longer blocks - always returns ANSWER
+    assert result.action == ChatAction.ANSWER
     assert result.failure_type is None
-    assert result.rendered_text == clarifying_prompt()
+    # Should return the placeholder text, not clarifying prompt
+    assert "Providing a concise response based on limited details" in result.rendered_text

@@ -10,7 +10,6 @@ from backend.app.chat_contract import ChatAction, FailureType as ContractFailure
 class Action(str, Enum):
     ANSWER = "ANSWER"
     ANSWER_DEGRADED = "ANSWER_DEGRADED"
-    ASK_CLARIFY = "ASK_CLARIFY"
     FAIL_GRACEFULLY = "FAIL_GRACEFULLY"
     BLOCK = "BLOCK"
 
@@ -71,7 +70,6 @@ def _map_action(action: Action) -> ChatAction:
     mapping = {
         Action.ANSWER: ChatAction.ANSWER,
         Action.ANSWER_DEGRADED: ChatAction.ANSWER_DEGRADED,
-        Action.ASK_CLARIFY: ChatAction.ASK_CLARIFY,
         Action.FAIL_GRACEFULLY: ChatAction.FAIL_GRACEFULLY,
         Action.BLOCK: ChatAction.BLOCK,
     }

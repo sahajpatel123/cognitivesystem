@@ -5,7 +5,6 @@ export type Action =
   | "CLOSE" 
   | "FALLBACK"
   | "ANSWER_DEGRADED"
-  | "ASK_CLARIFY"
   | "FAIL_GRACEFULLY"
   | "BLOCK";
 
@@ -32,7 +31,6 @@ const ALLOWED_ACTIONS: Action[] = [
   "CLOSE", 
   "FALLBACK",
   "ANSWER_DEGRADED",
-  "ASK_CLARIFY",
   "FAIL_GRACEFULLY",
   "BLOCK",
 ];

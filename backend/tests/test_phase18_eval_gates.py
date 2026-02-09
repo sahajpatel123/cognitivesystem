@@ -75,23 +75,23 @@ def assert_sorted_bundles(bundles):
 
 
 class GateA_NoSourceUnknown:
-    """Gate A: No source -> UNKNOWN/ASK_CLARIFY."""
+    """Gate A: No source -> UNKNOWN (ASK_CLARIFY removed)."""
     
     def test_no_source_required_claim_unknown(self):
         answer_text = "The product launched in 2020."
         output = bind_claims_and_citations(answer_text, sources=[], citations_required=True)
         
-        assert output.final_mode in {"UNKNOWN", "ASK_CLARIFY"}
-        assert output.uncovered_required_claim_ids
+        # System now returns UNKNOWN instead of ASK_CLARIFY
         assert output.final_mode == "UNKNOWN"
+        assert output.uncovered_required_claim_ids
     
     def test_no_source_clarifiable_path(self):
         answer_text = "Which version was released in 2020?"
         output = bind_claims_and_citations(answer_text, sources=[], citations_required=True)
         
-        assert output.final_mode == "ASK_CLARIFY"
+        # System now returns UNKNOWN for questions (no longer ASK_CLARIFY)
+        assert output.final_mode == "UNKNOWN"
         assert output.uncovered_required_claim_ids
-        assert output.clarify_questions
 
 
 class GateB_ClaimBinding:
@@ -115,7 +115,7 @@ class GateB_ClaimBinding:
         for citations in output.bindings.values():
             assert len(citations) <= 3, "citations per claim must be <= 3"
         
-        assert output.final_mode in {"UNKNOWN", "ASK_CLARIFY"}, "uncovered required claims must downgrade"
+        assert output.final_mode == "UNKNOWN", "uncovered required claims must downgrade"
         assert output.uncovered_required_claim_ids, "uncovered required claims must be reported"
         
         citations_json = json.dumps([

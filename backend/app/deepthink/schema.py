@@ -14,7 +14,6 @@ from enum import Enum
 class DecisionAction(str, Enum):
     """Allowed actions for decision patches."""
     ANSWER = "ANSWER"
-    ASK_CLARIFY = "ASK_CLARIFY"
     REFUSE = "REFUSE"
     FALLBACK = "FALLBACK"
 

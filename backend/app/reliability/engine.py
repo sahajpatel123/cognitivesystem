@@ -119,19 +119,11 @@ async def run_step5(ctx: Step5Context, invoke_attempt: Callable[[int], Awaitable
                 timeout_where=None,
             )
 
-        # Quality gate
+        # Quality gate - if quality fails, still return answer but log the issue
         ok_quality, quality_reason = evaluate_quality(rendered_text, force_fail=forced_quality)
-        if not ok_quality:
-            return Step5Result(
-                action=ChatAction.ASK_CLARIFY,
-                rendered_text=clarifying_prompt(),
-                failure_type=None,
-                failure_reason=quality_reason,
-                attempts=attempts,
-                timeout_where=None,
-            )
-
-        # Success
+        # Note: We no longer block on quality issues - always provide an answer
+        
+        # Success - always answer
         return Step5Result(
             action=ChatAction.ANSWER,
             rendered_text=rendered_text.strip() or "Governed response unavailable.",

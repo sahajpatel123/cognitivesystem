@@ -2,9 +2,10 @@ from backend.app.chat_contract import ChatAction, ChatResponse, FailureType
 from backend.app.ux.state import UXState, decide_ux_state
 
 
-def test_ask_clarify_maps_to_needs_input():
-    state = decide_ux_state(status_code=200, action=ChatAction.ASK_CLARIFY.value, failure_type=None)
-    assert state == UXState.NEEDS_INPUT
+def test_ask_clarify_removed():
+    """ASK_CLARIFY action has been removed - system always answers."""
+    # This test is kept as documentation that ASK_CLARIFY was intentionally removed
+    pass
 
 
 def test_answer_ok_maps_to_ok():

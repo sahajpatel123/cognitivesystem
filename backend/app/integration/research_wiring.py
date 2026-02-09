@@ -168,12 +168,14 @@ def _mk_patch(path: str, op: str, value: Any) -> dict:
     }
 
 
-def _force_ask_clarify_delta(msg: str, rationale: str) -> List[dict]:
+def _force_answer_with_question_delta(answer: str, msg: str, rationale: str) -> List[dict]:
     """
-    Create DecisionDelta that forces ASK_CLARIFY action.
+    Create DecisionDelta that forces ANSWER action with embedded clarifying question.
+    System now always answers - no longer uses ASK_CLARIFY.
     
     Args:
-        msg: Clarify question (bounded to 300 chars)
+        answer: Answer text with optional embedded question
+        msg: Clarifying question to append (bounded to 300 chars)
         rationale: Rationale (bounded to 600 chars)
     
     Returns:
@@ -182,11 +184,17 @@ def _force_ask_clarify_delta(msg: str, rationale: str) -> List[dict]:
     bounded_msg = _bounded_str(msg, MAX_CLARIFY_QUESTION_CHARS)
     bounded_rationale = _bounded_str(rationale, MAX_RATIONALE_CHARS)
     
+    # Embed clarifying question in answer if provided
+    full_answer = answer
+    if bounded_msg:
+        full_answer = f"{answer}\n\nQuick question (optional): {bounded_msg}"
+    
+    bounded_answer = _bounded_str(full_answer, MAX_ANSWER_CHARS)
+    
     ops = [
-        _mk_patch("decision.action", "set", "ASK_CLARIFY"),
-        _mk_patch("decision.clarify_question", "set", bounded_msg),
+        _mk_patch("decision.action", "set", "ANSWER"),
+        _mk_patch("decision.answer", "set", bounded_answer),
         _mk_patch("decision.rationale", "set", bounded_rationale),
-        _mk_patch("decision.answer", "set", ""),
     ]
     
     # Sort by path for deterministic ordering
@@ -376,17 +384,12 @@ def _map_sandbox_stop_reason(sandbox_reason: str) -> str:
 def _delta_for_sandbox_stop(stop_reason: str) -> List[dict]:
     """
     Create delta for sandbox stop reasons.
-    
-    - RATE_LIMITED/BUDGET_EXHAUSTED/TIMEOUT -> ASK_CLARIFY
-    - SANDBOX_VIOLATION -> FALLBACK
+    System now always returns FALLBACK for research errors (no ASK_CLARIFY).
     """
     if stop_reason == "SANDBOX_VIOLATION":
         return _force_fallback_delta("Research unavailable due to execution error.")
     else:
-        return _force_ask_clarify_delta(
-            "Could you try a more specific question?",
-            f"Research temporarily limited ({stop_reason})."
-        )
+        return _force_fallback_delta(f"Research temporarily limited ({stop_reason}). Please try again later.")
 
 
 def _delta_for_binder_mode(
@@ -395,39 +398,19 @@ def _delta_for_binder_mode(
 ) -> List[dict]:
     """
     Create delta based on binder final_mode.
+    System now always returns FALLBACK for unverifiable claims (no ASK_CLARIFY).
     
-    - OK: keep action, optionally tighten rationale
-    - ASK_CLARIFY: patch to ASK_CLARIFY with binder questions
-    - UNKNOWN: patch to FALLBACK (or ASK_CLARIFY if clarifiable)
+    - OK: keep action, no changes
+    - UNKNOWN or other: patch to FALLBACK
     """
     final_mode = binder_output.final_mode
-    clarify_questions = binder_output.clarify_questions
     
     if final_mode == "OK":
-        # Keep current action, no patches needed for action
-        # Return empty delta (no changes)
+        # Keep current action, no patches needed
         return []
     
-    elif final_mode == "ASK_CLARIFY":
-        # Use first clarify question from binder
-        question = clarify_questions[0] if clarify_questions else "Could you provide more details?"
-        return _force_ask_clarify_delta(
-            question,
-            "Additional information needed to provide accurate answer."
-        )
-    
-    else:  # UNKNOWN
-        # If clarifiable questions exist, use ASK_CLARIFY; else FALLBACK
-        if clarify_questions:
-            question = clarify_questions[0]
-            return _force_ask_clarify_delta(
-                question,
-                "Unable to verify claims with available sources."
-            )
-        else:
-            return _force_fallback_delta(
-                "Unable to provide verified answer with available sources."
-            )
+    # UNKNOWN or any other mode: return FALLBACK
+    return _force_fallback_delta("Unable to verify claims with available sources.")
 
 
 # ============================================================================
@@ -475,9 +458,8 @@ def run_policy_gated_research(
         if not policy.allowed:
             stop_reason = "POLICY_DISABLED"
             
-            delta = _force_ask_clarify_delta(
-                "Research is not available for this request.",
-                "Research mode not enabled by policy."
+            delta = _force_fallback_delta(
+                "Research is not available for this request."
             )
             
             telemetry = _build_empty_telemetry(stop_reason, env_mode_str)
@@ -606,9 +588,8 @@ def run_policy_gated_research(
         if not bundles:
             stop_reason = "NO_SOURCE"
             
-            delta = _force_ask_clarify_delta(
-                "Could you provide more context for your question?",
-                "No sources found for the research query."
+            delta = _force_fallback_delta(
+                "No sources found for the research query. Please try a different question."
             )
             
             telemetry = _build_empty_telemetry(stop_reason, env_mode_str)
@@ -763,9 +744,8 @@ def run_policy_gated_research(
         # ====================================================================
         stop_reason = "INTERNAL_INCONSISTENCY"
         
-        delta = _force_ask_clarify_delta(
-            "Could you try rephrasing your question?",
-            "An internal error occurred during research."
+        delta = _force_fallback_delta(
+            "An internal error occurred during research. Please try again."
         )
         
         telemetry = _build_empty_telemetry(stop_reason, env_mode_str)

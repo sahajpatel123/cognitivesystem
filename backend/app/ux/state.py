@@ -31,8 +31,7 @@ def decide_ux_state(
     reason_lower = (failure_reason or "").lower()
 
     if status_code == 200:
-        if action == "ASK_CLARIFY":
-            return UXState.NEEDS_INPUT
+        # ASK_CLARIFY removed - system always answers
         return UXState.OK
 
     if status_code in {415, 422}:

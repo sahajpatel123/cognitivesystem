@@ -150,7 +150,7 @@ class TestTelemetryEventFields:
             validator_failures=2,
             downgraded=True,
             decision_signature="def456",
-            final_action="ASK_CLARIFY",
+            final_action="ANSWER",
         )
         
         # Should not raise exception

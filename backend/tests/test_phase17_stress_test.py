@@ -98,7 +98,7 @@ class TestMissingCriticalInputForcesAskClarify:
         assert "language" in clarify_ops[0].value.lower() or "runtime" in clarify_ops[0].value.lower()
     
     def test_deploy_devops_missing_platform(self):
-        """DEPLOY_DEVOPS domain missing PLATFORM -> ASK_CLARIFY."""
+        """DEPLOY_DEVOPS domain missing PLATFORM -> should still ANSWER."""
         state = {
             "request_text": "My deployment build is failing at the start stage",
             "decision": {
