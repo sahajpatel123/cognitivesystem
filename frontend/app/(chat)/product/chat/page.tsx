@@ -130,7 +130,7 @@ export default function ChatPage() {
     const headlines = ["Ready to dive in?", "How can I help?", "Ready when you are."];
     const randomHeadline = headlines[Math.floor(Math.random() * headlines.length)];
     setIdleHeadline(randomHeadline);
-    
+
     if (typeof window !== "undefined") {
       const collapsed = localStorage.getItem("cs_chat_sidebar_collapsed") === "1";
       setSidebarCollapsed(collapsed);
@@ -316,11 +316,11 @@ export default function ChatPage() {
           setUiState("IDLE");
         }
       };
+    const start = performance.now();
     try {
       const fetchUrl = `${apiBase}/api/chat`;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
-      const start = Date.now();
       if (debugTransport) {
         console.log("[TransportDebug] request start", { url: fetchUrl, start });
       }
@@ -333,7 +333,7 @@ export default function ChatPage() {
         body: JSON.stringify(requestBody),
       });
       clearTimeout(timeout);
-      const duration = Date.now() - start;
+      const duration = Math.round(performance.now() - start);
 
       // Transport debug (structure-only, no user text)
       if (debugTransport) {
@@ -510,18 +510,29 @@ export default function ChatPage() {
       if (pendingRequestId.current !== currentRequestId) {
         return;
       }
+      const duration = Math.round(performance.now() - start);
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      const errMsg = err instanceof Error ? err.message : "unknown";
+      
       // Transport debug for errors (structure-only, no user text)
       if (debugTransport) {
-        const errMsg = err instanceof Error ? err.message : "unknown";
         setTransportDebug((prev) => ({ ...prev, lastError: errMsg }));
-        console.log("[TransportDebug] error", { error: errMsg });
+        console.log("[TransportDebug] error", { error: errMsg, name: err instanceof Error ? err.name : "unknown", duration });
       }
+      
+      const errorText = isAbort ? "Request timed out. Please retry." : "Request failed. Please retry.";
       replaceMessageById(pendingAssistantId, (msg) => ({
         ...msg,
-        text: "Request failed. Please retry.",
+        text: errorText,
         status: "error",
+        debug: {
+          statusCode: isAbort ? null : null,
+          contentType: isAbort ? "aborted" : "error",
+          durationMs: duration,
+          rawPreview: `Error: ${errMsg}`,
+        },
       }));
-      pushSystemMessage("Request failed. Please retry.", "FALLBACK");
+      pushSystemMessage(errorText, "FALLBACK");
       setUiState("FAILED");
     } finally {
       if (pendingRequestId.current !== currentRequestId) {
@@ -724,6 +735,7 @@ export default function ChatPage() {
                     action={msg.action}
                     failureType={msg.failureType}
                     debug={msg.debug}
+                    onRetry={msg.status === "error" && lastUserText ? retryLast : undefined}
                   />
                 ))}
               </div>

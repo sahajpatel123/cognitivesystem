@@ -17,9 +17,10 @@ type ChatMessageProps = {
   action?: Action;
   failureType?: string | null;
   debug?: DebugInfo;
+  onRetry?: () => void;
 };
 
-export function ChatMessage({ role, text, status, action, failureType, debug }: ChatMessageProps) {
+export function ChatMessage({ role, text, status, action, failureType, debug, onRetry }: ChatMessageProps) {
   const isAssistant = role === "assistant" || role === "system";
   const isPending = status === "pending";
   const isError = status === "error";
@@ -48,6 +49,26 @@ export function ChatMessage({ role, text, status, action, failureType, debug }: 
         </div>
         {action && <span className="chat-message-badge">{action}</span>}
         {failureType && <span className="chat-message-failure">Failure: {failureType}</span>}
+        {isError && onRetry && (
+          <button
+            type="button"
+            className="chat-message-retry-btn"
+            onClick={onRetry}
+            style={{
+              marginTop: "8px",
+              padding: "6px 12px",
+              fontSize: "13px",
+              fontWeight: 500,
+              color: "#fff",
+              backgroundColor: "#0066cc",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        )}
         {showDebug && (
           <details className="chat-message-debug">
             <summary>Debug</summary>

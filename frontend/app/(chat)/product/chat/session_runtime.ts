@@ -2,7 +2,7 @@ import { Action } from "./contract_runtime";
 
 export type StoredMessage = {
   id: string;
-  role: "user" | "system";
+  role: "user" | "assistant" | "system";
   text: string;
   action?: Action;
   failureType?: string | null;
@@ -102,7 +102,7 @@ function validateStoredSession(value: any): value is StoredSession {
   for (const m of value.messages) {
     if (!m || typeof m !== "object") return false;
     if (typeof m.id !== "string") return false;
-    if (m.role !== "user" && m.role !== "system") return false;
+    if (m.role !== "user" && m.role !== "assistant" && m.role !== "system") return false;
     if (typeof m.text !== "string" || m.text.length > MAX_MESSAGE_CHARS) return false;
     if (m.action && typeof m.action !== "string") return false;
     if (m.failureType && typeof m.failureType !== "string") return false;

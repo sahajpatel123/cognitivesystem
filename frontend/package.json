@@ -4,8 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:clean": "rimraf .next .turbo node_modules/.cache && next dev",
-    "build": "next build",
+    "dev:clean": "npm run clean:next && next dev",
+    "clean": "node scripts/rm.mjs .next .turbo node_modules/.cache",
+    "clean:next": "node scripts/rm.mjs .next .turbo",
+    "prebuild": "node scripts/verify-lockfile.mjs",
+    "build": "npm run clean:next && next build",
     "start": "next start",
     "lint": "next lint",
     "test:ui": "playwright test",
@@ -27,7 +30,9 @@
     "@playwright/test": "1.49.0",
     "tailwindcss": "^3.4.0",
     "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32",
-    "rimraf": "^5.0.5"
+    "postcss": "^8.4.32"
+  },
+  "engines": {
+    "node": ">=18.17.0"
   }
 }
