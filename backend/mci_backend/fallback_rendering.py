@@ -94,27 +94,19 @@ def _render_confidence_line(plan: OutputPlan) -> Optional[str]:
 
 
 def _render_answer(plan: OutputPlan, decision_state: DecisionState) -> str:
-    base_lines = [
-        "Answer: Providing a concise response based on limited details.",
-    ]
-
-    confidence_line = _render_confidence_line(plan)
-    if confidence_line:
-        base_lines.append(confidence_line)
-
-    unknown_line = _render_unknown_line(plan, decision_state)
-    if unknown_line:
-        base_lines.append(unknown_line)
-
-    assumption_line = _render_assumption_line(plan)
-    if assumption_line:
-        base_lines.append(assumption_line)
-
-    if plan.rigor_disclosure in (RigorDisclosureLevel.STRUCTURED, RigorDisclosureLevel.ENFORCED) or plan.posture == ExpressionPosture.CONSTRAINED:
-        base_lines.append("Check: Keep within scope and avoid speculation.")
-
-    rendered = " ".join(base_lines)
-    return _cap_length(_sanitize(rendered), plan.verbosity_cap)
+    """
+    Render a helpful fallback answer when LLM is unavailable.
+    CRITICAL: This must return a real answer, NOT meta scaffolding.
+    The UI should never see "Answer: Providing a concise response..." text.
+    """
+    # Return a helpful fallback message that explains the service is temporarily limited
+    # This is better than meta scaffolding which confuses users
+    fallback_text = (
+        "I'm currently operating in a limited mode and may not be able to provide "
+        "a complete answer. Please try rephrasing your question or try again shortly."
+    )
+    
+    return _cap_length(_sanitize(fallback_text), plan.verbosity_cap)
 
 
 def _render_question(plan: OutputPlan) -> Dict[str, object]:

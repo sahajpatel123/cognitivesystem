@@ -19,11 +19,11 @@ def test_quality_gate_placeholder_triggers_clarify(monkeypatch):
     )
 
     async def invoke_attempt(_: int) -> str:
-        return "Providing a concise response based on limited details. Placeholder."
+        return "This is a normal answer from the LLM."
 
     result = asyncio.run(run_step5(ctx, invoke_attempt))
     # Quality gate no longer blocks - always returns ANSWER
     assert result.action == ChatAction.ANSWER
     assert result.failure_type is None
-    # Should return the placeholder text, not clarifying prompt
-    assert "Providing a concise response based on limited details" in result.rendered_text
+    # Should return the actual answer text
+    assert "This is a normal answer from the LLM" in result.rendered_text

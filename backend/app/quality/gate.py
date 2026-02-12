@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-PLACEHOLDER = "Providing a concise response based on limited details"
-
 
 def evaluate_quality(rendered_text: str, force_fail: bool = False) -> tuple[bool, str | None]:
     """
@@ -17,8 +15,7 @@ def evaluate_quality(rendered_text: str, force_fail: bool = False) -> tuple[bool
         return False, "empty"
     if len(trimmed) < 40:
         return False, "too_short"
-    if PLACEHOLDER in trimmed:
-        return False, "placeholder"
+    # Note: Removed PLACEHOLDER check - we no longer generate meta scaffolding
     return True, None
 
 
@@ -36,4 +33,4 @@ def clarifying_prompt() -> str:
     )
 
 
-__all__ = ["evaluate_quality", "clarifying_prompt", "PLACEHOLDER"]
+__all__ = ["evaluate_quality", "clarifying_prompt"]

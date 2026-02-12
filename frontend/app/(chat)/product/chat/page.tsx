@@ -464,6 +464,20 @@ export default function ChatPage() {
       let extracted = "";
       try {
         parsed = JSON.parse(raw);
+        
+        // DEV ONLY: Log full response structure to diagnose meta scaffolding bug
+        if (process.env.NODE_ENV === 'development' && debugTransport) {
+          console.log('[DEV] Full /api/chat response:', {
+            keys: Object.keys(parsed),
+            action: parsed.action,
+            rendered_text: parsed.rendered_text?.substring(0, 200),
+            failure_type: parsed.failure_type,
+            hasAnswer: !!parsed.answer,
+            hasMessage: !!parsed.message,
+            hasContent: !!parsed.content,
+          });
+        }
+        
         const { content, action, failureType } = extractMessageFromJson(parsed);
         extracted = content;
         if (!extracted && rawTrim) {
