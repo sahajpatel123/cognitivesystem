@@ -79,6 +79,23 @@ def invoke_model_for_output_plan(
     if verified.ok:
         return verified
 
+    # DIAGNOSTIC: Log why verification failed and fallback is being used
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(
+        "[FALLBACK] Model output verification failed, using fallback rendering",
+        extra={
+            "request_id": verified.request_id if verified else "unknown",
+            "model_ok": result.ok,
+            "model_has_text": bool(result.output_text),
+            "model_has_json": bool(result.output_json),
+            "verified_ok": verified.ok,
+            "failure_type": verified.failure.failure_type.value if verified.failure else None,
+            "failure_reason": verified.failure.reason_code if verified.failure else None,
+            "output_action": output_plan.action.value,
+        },
+    )
+
     # 6) Deterministic fallback rendering (no model). Activates on model/verify failure.
     try:
         fallback = render_fallback_content(

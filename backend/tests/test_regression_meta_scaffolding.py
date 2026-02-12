@@ -87,8 +87,12 @@ def test_fallback_is_helpful_not_meta():
     # Fallback text should be helpful
     assert "Governed response unavailable" in result.rendered_text
     
-    # Should NOT contain meta scaffolding
+    # Should NOT contain old meta scaffolding
     assert "Providing a concise response based on limited details" not in result.rendered_text
     assert "Confidence:" not in result.rendered_text
     assert "Unknown:" not in result.rendered_text
     assert "Assumption:" not in result.rendered_text
+    
+    # Should NOT contain the new fallback text meant for verification failures
+    assert "limited mode" not in result.rendered_text.lower()
+    assert "technical issue" not in result.rendered_text.lower()

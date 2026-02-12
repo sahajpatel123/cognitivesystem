@@ -96,14 +96,13 @@ def _render_confidence_line(plan: OutputPlan) -> Optional[str]:
 def _render_answer(plan: OutputPlan, decision_state: DecisionState) -> str:
     """
     Render a helpful fallback answer when LLM is unavailable.
-    CRITICAL: This must return a real answer, NOT meta scaffolding.
-    The UI should never see "Answer: Providing a concise response..." text.
+    CRITICAL: This should ONLY be used when the LLM actually fails.
+    This is NOT for abuse/policy blocks - those have their own messages.
     """
-    # Return a helpful fallback message that explains the service is temporarily limited
-    # This is better than meta scaffolding which confuses users
+    # This fallback is only for genuine LLM failures (timeout, provider error, etc.)
     fallback_text = (
-        "I'm currently operating in a limited mode and may not be able to provide "
-        "a complete answer. Please try rephrasing your question or try again shortly."
+        "I apologize, but I'm unable to generate a response right now due to a "
+        "technical issue. Please try again in a moment."
     )
     
     return _cap_length(_sanitize(fallback_text), plan.verbosity_cap)

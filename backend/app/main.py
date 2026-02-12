@@ -81,6 +81,7 @@ from backend.app.reliability import (
 )
 from backend.app.reliability.engine import Step5Context, run_step5
 from backend.app.ux import UXState, build_ux_headers, decide_ux_state, extract_cooldown_seconds
+from backend.app.utils.request_helpers import get_request_scheme
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -875,6 +876,10 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
         is_non_local = (_settings.app_env or "local").lower() in {"staging", "production", "prod"} or (
             (request.url.hostname or "").lower() not in {"localhost", "127.0.0.1", "::1"}
         )
+        
+        # CRITICAL: Get actual scheme respecting X-Forwarded-Proto from Railway proxy
+        actual_scheme = get_request_scheme(request)
+        
         abuse_ctx = AbuseContext(
             path=str(request.url.path),
             request_id=rid,
@@ -889,10 +894,25 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
             method=request.method,
             has_auth=bool(identity.is_authenticated),
             is_sensitive_path=True,
-            request_scheme=request.url.scheme,
+            request_scheme=actual_scheme,  # Use actual scheme from proxy headers
             is_non_local=is_non_local,
         )
         abuse_decision = decide_abuse(abuse_ctx)
+        
+        # DIAGNOSTIC: Log scheme detection for debugging
+        logger.info(
+            "[HTTPS] Scheme detection",
+            extra={
+                "request_id": rid,
+                "direct_scheme": request.url.scheme,
+                "x_forwarded_proto": request.headers.get("x-forwarded-proto"),
+                "actual_scheme": actual_scheme,
+                "is_https": actual_scheme == "https",
+                "abuse_score": abuse_decision.score,
+                "abuse_reason": abuse_decision.reason,
+                "abuse_action": abuse_decision.action,
+            },
+        )
         abuse_score = abuse_decision.score
         abuse_action = abuse_decision.action
         abuse_allowed = abuse_decision.allowed
