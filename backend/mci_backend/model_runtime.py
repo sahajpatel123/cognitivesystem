@@ -7,6 +7,7 @@ No provider selection, no retries, no prompt tuning, no authority.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict
 
 from backend.app.enforcement import EnforcementError, ViolationClass
@@ -24,6 +25,8 @@ from backend.mci_backend.model_contract import (
     build_request_id,
     validate_model_request,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _default_style() -> CognitiveStyle:
@@ -174,6 +177,15 @@ def invoke_model(request: ModelInvocationRequest, llm_client: LLMClient | None =
             message=str(exc),
         )
     except Exception as exc:  # noqa: BLE001
+        # Log full traceback for debugging provider errors
+        logger.exception(
+            "PROVIDER_ERROR",
+            extra={
+                "model": "expression_model",
+                "request_id": build_request_id(request),
+                "route": "/api/chat",
+            }
+        )
         return _failure_result(
             request,
             ModelFailureType.PROVIDER_ERROR,

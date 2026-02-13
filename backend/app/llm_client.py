@@ -63,6 +63,9 @@ class LLMClient:
         self.connect_timeout_seconds = connect_timeout_seconds or float(s.model_connect_timeout_seconds)
         self.request_id_header = request_id_header or s.request_id_header
         self.request_id_value = request_id_value
+        # Store model names for use in call methods
+        self.reasoning_model_name = s.llm_reasoning_model
+        self.expression_model_name = s.llm_expression_model
 
     def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not self.api_base or not self.api_key:
@@ -201,7 +204,7 @@ class LLMClient:
         }
 
         payload = {
-            "model": settings.llm_reasoning_model,
+            "model": self.reasoning_model_name,
             "messages": [
                 reasoning_instruction,
                 {"role": "user", "content": json.dumps(user_payload)},
@@ -305,7 +308,7 @@ class LLMClient:
         }
 
         payload = {
-            "model": settings.llm_expression_model,
+            "model": self.expression_model_name,
             "messages": [
                 expression_instruction,
                 {"role": "user", "content": json.dumps(user_payload)},
