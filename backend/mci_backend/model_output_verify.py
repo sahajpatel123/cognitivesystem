@@ -198,16 +198,66 @@ def verify_and_sanitize_model_output(
     if not model_result.ok:
         return model_result
 
-    try:
-        payload = model_result.output_json if model_result.output_json is not None else parse_model_json(model_result.output_text or "")
-    except ModelOutputParseError as exc:
-        return _failure(request_id, ModelFailureType.NON_JSON, "NON_JSON", str(exc))
+    # CRITICAL FIX: Support both JSON and plain text for ANSWER/REFUSE/CLOSE
+    # The model can return either format depending on configuration
+    # If output_json is already populated, use it (JSON path from model_runtime)
+    # If output_text is populated but not output_json, try JSON parse first, then fall back to plain text
+    
+    if model_result.output_json is not None:
+        # Model returned JSON directly
+        payload = model_result.output_json
+    elif model_result.output_text:
+        # Model returned text - try JSON parse first for backward compatibility
+        try:
+            payload = parse_model_json(model_result.output_text)
+        except ModelOutputParseError:
+            # JSON parse failed - for ANSWER/REFUSE/CLOSE, accept as plain text
+            if output_plan.action in {OutputAction.ANSWER, OutputAction.REFUSE, OutputAction.CLOSE}:
+                raw_text = model_result.output_text
+                sanitized = _sanitize_text(raw_text)
+                
+                if not sanitized:
+                    return _failure(request_id, ModelFailureType.SCHEMA_MISMATCH, "EMPTY_OUTPUT", "Model returned empty text")
+                
+                # Perform semantic checks on plain text
+                failure = _check_forbidden_phrases(sanitized, request_id)
+                if failure:
+                    return failure
+                
+                # Check unknown disclosure for ANSWER
+                if output_plan.action == OutputAction.ANSWER and output_plan.unknown_disclosure != UnknownDisclosureMode.NONE:
+                    lowered = sanitized.lower()
+                    if all(token not in lowered for token in ["unknown", "uncertain", "not sure", "unclear", "cannot confirm"]):
+                        return _failure(
+                            request_id,
+                            ModelFailureType.CONTRACT_VIOLATION,
+                            "MISSING_UNKNOWN_DISCLOSURE",
+                            "Explicit unknown disclosure required",
+                        )
+                
+                # Check no questions in CLOSE
+                if output_plan.action == OutputAction.CLOSE and "?" in sanitized:
+                    return _failure(request_id, ModelFailureType.CONTRACT_VIOLATION, "QUESTION_IN_CLOSE", "Closure must not ask questions")
+                
+                return ModelInvocationResult(
+                    request_id=request_id,
+                    ok=True,
+                    output_text=sanitized,
+                    output_json=None,
+                    failure=None,
+                )
+            else:
+                # ASK_ONE_QUESTION requires JSON
+                return _failure(request_id, ModelFailureType.NON_JSON, "NON_JSON", "JSON required for this action")
+    else:
+        return _failure(request_id, ModelFailureType.SCHEMA_MISMATCH, "EMPTY_OUTPUT", "Model returned no output")
 
+    # JSON path - validate structure
     validated, failure = _verify_action_alignment(output_plan.action, payload, request_id)
     if failure:
         return failure
 
-    # semantic checks per action
+    # Handle each action type
     if isinstance(validated, AnswerJSON):
         failure = _verify_answer(validated, output_plan, decision_state, request_id)
         if failure:

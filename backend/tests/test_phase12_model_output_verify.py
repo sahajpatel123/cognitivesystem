@@ -143,24 +143,29 @@ def test_answer_valid_passes():
 
 
 def test_non_json_fails():
+    # UPDATED: Plain text is now accepted for ANSWER actions (fallback from JSON)
     plan = _plan(OutputAction.ANSWER)
     req = _request_for_plan(plan, "Hi")
     res = _result_from_payload(req, "not-json")
     out = verify_and_sanitize_model_output(
         model_result=res, output_plan=plan, decision_state=_decision_state(), control_plan=None
     )
-    assert not out.ok
-    assert out.failure.failure_type == ModelFailureType.NON_JSON
+    # Plain text should now pass for ANSWER
+    assert out.ok
+    assert out.output_text == "not-json"
 
 
 def test_markdown_fence_fails():
+    # UPDATED: Plain text (even with markdown fences) is now accepted for ANSWER actions
     plan = _plan(OutputAction.ANSWER)
     req = _request_for_plan(plan, "Hi")
     res = _result_from_payload(req, "```json\n{\"answer_text\":\"x\"}\n```")
     out = verify_and_sanitize_model_output(
         model_result=res, output_plan=plan, decision_state=_decision_state(), control_plan=None
     )
-    assert not out.ok
+    # Plain text should now pass for ANSWER (markdown fences are just text)
+    assert out.ok
+    assert "```json" in out.output_text
 
 
 def test_action_mismatch_fails():
