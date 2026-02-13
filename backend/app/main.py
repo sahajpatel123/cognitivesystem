@@ -110,6 +110,35 @@ logger = logging.getLogger(__name__)
 APP_VERSION = "2026.15.1"
 _start_time = time.monotonic()
 
+# Deployment marker: log build info for observability
+def _get_git_sha() -> str:
+    """Get current git SHA if available."""
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=1,
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+
+_git_sha = _get_git_sha()
+logger.info(
+    "BUILD_MARKER %s",
+    json.dumps({
+        "event": "build_marker",
+        "git_sha": _git_sha,
+        "version": APP_VERSION,
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+    }, ensure_ascii=False)
+)
+
 app = FastAPI(title="Cognitive Conversational Prototype")
 _settings = get_settings()
 _settings_summary = validate_for_env(_settings)
@@ -126,6 +155,7 @@ logger.info(
         },
         "token_caps": _settings_summary.get("token_caps"),
         "issues": _settings_summary.get("issues"),
+        "git_sha": _git_sha,
     },
 )
 

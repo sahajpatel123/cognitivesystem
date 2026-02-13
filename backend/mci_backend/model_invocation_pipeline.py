@@ -79,21 +79,40 @@ def invoke_model_for_output_plan(
     if verified.ok:
         return verified
 
-    # DIAGNOSTIC: Log why verification failed and fallback is being used
+    # DIAGNOSTIC: Log structured diagnostics for verification failure
+    import json
     import logging
+    from backend.mci_backend.diagnostic_utils import sanitize_preview
+    
     logger = logging.getLogger(__name__)
+    
+    # Build comprehensive diagnostic payload
+    diagnostic_payload = {
+        "event": "model_output_verification_failed",
+        "request_id": verified.request_id if verified else "unknown",
+        "route": "/api/chat",  # This is called from chat endpoint
+        "action": output_plan.action.value if output_plan else "unknown",
+        "failure_type": verified.failure.failure_type.value if (verified and verified.failure) else None,
+        "reason_code": verified.failure.reason_code if (verified and verified.failure) else None,
+        "parse_error": verified.failure.message if (verified and verified.failure) else None,
+        "has_output_json": bool(result.output_json),
+        "has_output_text": bool(result.output_text),
+        "output_shape": {
+            "json_present": result.output_json is not None,
+            "text_present": result.output_text is not None,
+            "model_ok": result.ok,
+        },
+        "raw_preview": sanitize_preview(result.output_text) if result.output_text else sanitize_preview(str(result.output_json)) if result.output_json else "",
+        "model": "expression_model",  # This is the expression model path
+    }
+    
+    # Log as single-line JSON for grep-friendly Railway logs
+    logger.warning("MODEL_VERIFY_FAIL %s", json.dumps(diagnostic_payload, ensure_ascii=False))
+    
+    # Also log human-readable version for backward compatibility
     logger.warning(
         "[FALLBACK] Model output verification failed, using fallback rendering",
-        extra={
-            "request_id": verified.request_id if verified else "unknown",
-            "model_ok": result.ok,
-            "model_has_text": bool(result.output_text),
-            "model_has_json": bool(result.output_json),
-            "verified_ok": verified.ok,
-            "failure_type": verified.failure.failure_type.value if verified.failure else None,
-            "failure_reason": verified.failure.reason_code if verified.failure else None,
-            "output_action": output_plan.action.value,
-        },
+        extra=diagnostic_payload,
     )
 
     # 6) Deterministic fallback rendering (no model). Activates on model/verify failure.
