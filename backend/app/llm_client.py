@@ -38,6 +38,30 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 
+def _normalize_base_url(base_url: str) -> str:
+    """Normalize base URL to ensure correct OpenAI endpoint format.
+    
+    Accepts:
+    - https://api.openai.com -> https://api.openai.com/v1
+    - https://api.openai.com/v1 -> https://api.openai.com/v1
+    - https://api.openai.com/v1/ -> https://api.openai.com/v1
+    - https://api.openai.com/v1/chat/completions -> https://api.openai.com/v1
+    
+    Returns base URL ending with /v1 (no trailing slash, no /chat/completions)
+    """
+    base_url = base_url.rstrip("/")
+    
+    # Remove /chat/completions if present
+    if base_url.endswith("/chat/completions"):
+        base_url = base_url[:-len("/chat/completions")]
+    
+    # Ensure /v1 is present
+    if not base_url.endswith("/v1"):
+        base_url = base_url + "/v1"
+    
+    return base_url
+
+
 def _resolve_api_base() -> Optional[str]:
     """Resolve API base URL from env vars with fallbacks.
     
@@ -112,7 +136,8 @@ class LLMClient:
         s = get_settings()
         
         # Robust config resolution: try passed params, then settings, then env vars
-        self.api_base = api_base or s.model_base_url or s.model_provider_base_url or s.llm_api_base or _resolve_api_base()
+        raw_base = api_base or s.model_base_url or s.model_provider_base_url or s.llm_api_base or _resolve_api_base()
+        self.api_base = _normalize_base_url(raw_base) if raw_base else None
         self.api_key = api_key or s.model_api_key or s.llm_api_key or _resolve_api_key()
         
         # Validate and log config (safe - no secrets)
@@ -156,6 +181,9 @@ class LLMClient:
         if not self.api_base or not self.api_key:
             raise RuntimeError("LLM configuration missing (api_base / api_key)")
 
+        # Build full URL with /chat/completions endpoint
+        url = f"{self.api_base}/chat/completions"
+        
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -169,29 +197,95 @@ class LLMClient:
             read=outbound_http_read_timeout_s(),
         )
 
+        # Log request details (no secrets)
+        logger.info(
+            "[LLM] HTTP request",
+            extra={
+                "url": url,
+                "model": payload.get("model"),
+                "timeout_s": self.timeout_seconds,
+                "request_id": self.request_id_value,
+            }
+        )
+
         client = get_shared_httpx_client()
         try:
-            resp = client.post(self.api_base, headers=headers, json=payload, timeout=timeout)
+            resp = client.post(url, headers=headers, json=payload, timeout=timeout)
             resp.raise_for_status()
             try:
                 data = resp.json()
+                logger.info(
+                    "[LLM] HTTP response OK",
+                    extra={
+                        "status_code": resp.status_code,
+                        "model": payload.get("model"),
+                    }
+                )
             except ValueError as exc:
+                logger.error(
+                    "[LLM] Non-JSON response",
+                    extra={
+                        "status_code": resp.status_code,
+                        "response_preview": resp.text[:300] if resp.text else "",
+                    }
+                )
                 raise build_failure(
                     violation_class=ViolationClass.STRUCTURAL_VIOLATION,
                     reason="LLM adapter returned non-JSON response",
-                    detail={"error": str(exc)},
+                    detail={"error": str(exc), "status_code": resp.status_code},
                 ) from exc
         except httpx.TimeoutException as exc:
+            logger.error(
+                "[LLM] HTTP timeout",
+                extra={
+                    "url": url,
+                    "timeout_s": self.timeout_seconds,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+            )
             raise build_failure(
                 violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
                 reason="LLM adapter HTTP request timeout",
-                detail={"error": str(exc)},
+                detail={"error": str(exc), "url": url, "timeout_s": self.timeout_seconds},
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            # HTTP error with response (4xx, 5xx)
+            status_code = exc.response.status_code
+            response_text = exc.response.text[:300] if exc.response.text else ""
+            logger.error(
+                "[LLM] HTTP error",
+                extra={
+                    "url": url,
+                    "status_code": status_code,
+                    "response_preview": response_text,
+                    "error_type": type(exc).__name__,
+                }
+            )
+            raise build_failure(
+                violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
+                reason=f"LLM adapter HTTP {status_code} error",
+                detail={
+                    "error": str(exc),
+                    "status_code": status_code,
+                    "response_preview": response_text,
+                    "url": url,
+                },
             ) from exc
         except httpx.HTTPError as exc:
+            # Other HTTP errors (connection, DNS, etc.)
+            logger.error(
+                "[LLM] HTTP connection error",
+                extra={
+                    "url": url,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+            )
             raise build_failure(
                 violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
                 reason="LLM adapter HTTP request failed",
-                detail={"error": str(exc)},
+                detail={"error": str(exc), "error_type": type(exc).__name__, "url": url},
             ) from exc
 
         return data

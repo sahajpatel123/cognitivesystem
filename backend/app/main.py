@@ -48,6 +48,7 @@ from backend.app.deps.plan_guard import post_accounting, precheck_plan_and_quota
 from backend.app.llm_client import LLMClient
 from backend.app.observability import hash_subject, record_invocation, structured_log
 from backend.app.observability.request_id import get_request_id
+from backend.app.perf.http_client import get_shared_httpx_client
 from backend.app.observability.logging import safe_redact
 from backend.app.plans.policy import Plan
 from backend.app.plans.tokens import clamp_text_to_token_limit, estimate_tokens_from_text
@@ -723,6 +724,114 @@ async def readyz() -> JSONResponse:
             content={
                 "ready": False,
                 "error": llm_error,
+            }
+        )
+
+
+@app.get("/api/llm_health")
+async def llm_health() -> JSONResponse:
+    """LLM health check - makes a minimal test call to verify OpenAI connectivity."""
+    llm_ok = getattr(app.state, "llm_ok", False)
+    
+    if not llm_ok:
+        llm_error = getattr(app.state, "llm_error", "LLM not initialized")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "error_type": "NOT_CONFIGURED",
+                "error_message": llm_error,
+                "final_url_used": None,
+                "status_code": None,
+                "response_preview": None,
+            }
+        )
+    
+    # Try a minimal chat completion request
+    llm_client = getattr(app.state, "llm_client", None)
+    if not llm_client:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "error_type": "CLIENT_MISSING",
+                "error_message": "LLM client not available",
+                "final_url_used": None,
+                "status_code": None,
+                "response_preview": None,
+            }
+        )
+    
+    try:
+        # Make a minimal test request
+        test_payload = {
+            "model": llm_client.expression_model_name,
+            "messages": [{"role": "user", "content": "test"}],
+            "max_tokens": 5,
+        }
+        
+        url = f"{llm_client.api_base}/chat/completions"
+        
+        import httpx
+        headers = {
+            "Authorization": f"Bearer {llm_client.api_key}",
+            "Content-Type": "application/json",
+        }
+        
+        timeout = httpx.Timeout(10.0, connect=5.0)
+        client = get_shared_httpx_client()
+        
+        resp = client.post(url, headers=headers, json=test_payload, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": True,
+                "final_url_used": url,
+                "status_code": resp.status_code,
+                "error_type": None,
+                "error_message": None,
+                "response_preview": str(data.get("choices", [{}])[0].get("message", {}))[:200] if data else None,
+            }
+        )
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
+        response_text = exc.response.text[:300] if exc.response.text else ""
+        return JSONResponse(
+            status_code=200,  # Return 200 so we can see the diagnostic info
+            content={
+                "ok": False,
+                "error_type": "HTTP_ERROR",
+                "error_message": f"HTTP {status_code}: {str(exc)}",
+                "final_url_used": url,
+                "status_code": status_code,
+                "response_preview": response_text,
+            }
+        )
+    except httpx.TimeoutException as exc:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": False,
+                "error_type": "TIMEOUT",
+                "error_message": str(exc),
+                "final_url_used": url,
+                "status_code": None,
+                "response_preview": None,
+            }
+        )
+    except Exception as exc:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": False,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "final_url_used": url if 'url' in locals() else None,
+                "status_code": None,
+                "response_preview": None,
             }
         )
 
