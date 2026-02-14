@@ -47,7 +47,7 @@ def _normalize_base_url(base_url: str) -> str:
     - https://api.openai.com/v1/ -> https://api.openai.com/v1
     - https://api.openai.com/v1/chat/completions -> https://api.openai.com/v1
     
-    Returns base URL ending with /v1 (no trailing slash, no /chat/completions)
+    Returns base URL ending with /v1 (no trailing slash)
     """
     base_url = base_url.rstrip("/")
     
@@ -55,7 +55,7 @@ def _normalize_base_url(base_url: str) -> str:
     if base_url.endswith("/chat/completions"):
         base_url = base_url[:-len("/chat/completions")]
     
-    # Ensure /v1 is present
+    # Ensure exactly one /v1 suffix
     if not base_url.endswith("/v1"):
         base_url = base_url + "/v1"
     
@@ -277,15 +277,23 @@ class LLMClient:
             logger.error(
                 "[LLM] HTTP connection error",
                 extra={
-                    "url": url,
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
+                    "request_id": self.request_id_value,
+                    "final_url": url,
+                    "method": "POST",
+                    "timeout_seconds": self.timeout_seconds,
+                    "exception_class": type(exc).__name__,
+                    "exception_message": str(exc),
                 }
             )
             raise build_failure(
                 violation_class=ViolationClass.EXTERNAL_DEPENDENCY_FAILURE,
                 reason="LLM adapter HTTP request failed",
-                detail={"error": str(exc), "error_type": type(exc).__name__, "url": url},
+                detail={
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                    "url": url,
+                    "request_id": self.request_id_value,
+                },
             ) from exc
 
         return data

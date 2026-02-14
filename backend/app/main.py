@@ -731,46 +731,51 @@ async def readyz() -> JSONResponse:
 @app.get("/api/llm_health")
 async def llm_health() -> JSONResponse:
     """LLM health check - makes a minimal test call to verify OpenAI connectivity."""
+    settings = get_settings()
     llm_ok = getattr(app.state, "llm_ok", False)
     
     if not llm_ok:
         llm_error = getattr(app.state, "llm_error", "LLM not initialized")
         return JSONResponse(
-            status_code=503,
+            status_code=200,
             content={
                 "ok": False,
+                "provider": settings.model_provider or "unknown",
+                "base_url": None,
+                "final_url": None,
                 "error_type": "NOT_CONFIGURED",
                 "error_message": llm_error,
-                "final_url_used": None,
                 "status_code": None,
-                "response_preview": None,
+                "response_preview": "",
             }
         )
     
-    # Try a minimal chat completion request
     llm_client = getattr(app.state, "llm_client", None)
     if not llm_client:
         return JSONResponse(
-            status_code=503,
+            status_code=200,
             content={
                 "ok": False,
+                "provider": settings.model_provider or "unknown",
+                "base_url": None,
+                "final_url": None,
                 "error_type": "CLIENT_MISSING",
                 "error_message": "LLM client not available",
-                "final_url_used": None,
                 "status_code": None,
-                "response_preview": None,
+                "response_preview": "",
             }
         )
     
+    base_url_sanitized = llm_client.api_base.split("//")[-1].split("/")[0] if llm_client.api_base and "//" in llm_client.api_base else llm_client.api_base
+    
     try:
-        # Make a minimal test request
         test_payload = {
             "model": llm_client.expression_model_name,
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 5,
         }
         
-        url = f"{llm_client.api_base}/chat/completions"
+        final_url = f"{llm_client.api_base}/chat/completions"
         
         import httpx
         headers = {
@@ -781,7 +786,7 @@ async def llm_health() -> JSONResponse:
         timeout = httpx.Timeout(10.0, connect=5.0)
         client = get_shared_httpx_client()
         
-        resp = client.post(url, headers=headers, json=test_payload, timeout=timeout)
+        resp = client.post(final_url, headers=headers, json=test_payload, timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
         
@@ -789,23 +794,27 @@ async def llm_health() -> JSONResponse:
             status_code=200,
             content={
                 "ok": True,
-                "final_url_used": url,
-                "status_code": resp.status_code,
+                "provider": settings.model_provider or "openai",
+                "base_url": base_url_sanitized,
+                "final_url": final_url,
                 "error_type": None,
                 "error_message": None,
-                "response_preview": str(data.get("choices", [{}])[0].get("message", {}))[:200] if data else None,
+                "status_code": resp.status_code,
+                "response_preview": str(data.get("choices", [{}])[0].get("message", {}))[:300] if data else "",
             }
         )
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code
         response_text = exc.response.text[:300] if exc.response.text else ""
         return JSONResponse(
-            status_code=200,  # Return 200 so we can see the diagnostic info
+            status_code=200,
             content={
                 "ok": False,
-                "error_type": "HTTP_ERROR",
+                "provider": settings.model_provider or "openai",
+                "base_url": base_url_sanitized,
+                "final_url": final_url if 'final_url' in locals() else None,
+                "error_type": "HTTPStatusError",
                 "error_message": f"HTTP {status_code}: {str(exc)}",
-                "final_url_used": url,
                 "status_code": status_code,
                 "response_preview": response_text,
             }
@@ -815,11 +824,13 @@ async def llm_health() -> JSONResponse:
             status_code=200,
             content={
                 "ok": False,
-                "error_type": "TIMEOUT",
+                "provider": settings.model_provider or "openai",
+                "base_url": base_url_sanitized,
+                "final_url": final_url if 'final_url' in locals() else None,
+                "error_type": "TimeoutException",
                 "error_message": str(exc),
-                "final_url_used": url,
                 "status_code": None,
-                "response_preview": None,
+                "response_preview": "",
             }
         )
     except Exception as exc:
@@ -827,11 +838,13 @@ async def llm_health() -> JSONResponse:
             status_code=200,
             content={
                 "ok": False,
+                "provider": settings.model_provider or "openai",
+                "base_url": base_url_sanitized,
+                "final_url": final_url if 'final_url' in locals() else None,
                 "error_type": type(exc).__name__,
                 "error_message": str(exc),
-                "final_url_used": url if 'url' in locals() else None,
                 "status_code": None,
-                "response_preview": None,
+                "response_preview": "",
             }
         )
 
