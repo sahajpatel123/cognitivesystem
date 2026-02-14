@@ -185,8 +185,30 @@ app.add_middleware(RequestIdMiddleware)
 # 3. Content-Length stripping (innermost, prevents streaming errors)
 app.add_middleware(StripContentLengthMiddleware)
 
-service = ConversationService()
+# Initialize service without LLM (will be set in startup event)
+service = ConversationService(llm_client=None)
 cost_policy = get_cost_policy()
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize LLM client on startup. Never crash - store error if config missing."""
+    try:
+        llm_client = LLMClient()
+        service.llm = llm_client
+        app.state.llm_ok = True
+        app.state.llm_client = llm_client
+        app.state.llm_error = None
+        logger.info("[LLM] Startup: LLM client initialized successfully")
+    except Exception as exc:
+        # Store error but don't crash - allow server to start
+        app.state.llm_ok = False
+        app.state.llm_client = None
+        app.state.llm_error = str(exc)
+        logger.warning(
+            "[LLM] Startup: LLM client initialization failed - server will return 503 for /api/chat",
+            extra={"error": str(exc), "error_type": type(exc).__name__}
+        )
 
 # Include auth router
 app.include_router(auth.router)
@@ -675,6 +697,36 @@ async def ready() -> JSONResponse:
         return JSONResponse(status_code=503, content={"status": "not_ready", "reason": "sanitized"})
 
 
+@app.get("/healthz")
+async def healthz() -> JSONResponse:
+    """Health check endpoint - always returns 200 if server is running."""
+    return JSONResponse(status_code=200, content={"ok": True})
+
+
+@app.get("/readyz")
+async def readyz() -> JSONResponse:
+    """Readiness check endpoint - returns 200 if LLM is configured, 503 otherwise."""
+    llm_ok = getattr(app.state, "llm_ok", False)
+    if llm_ok:
+        settings = get_settings()
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ready": True,
+                "provider": settings.model_provider,
+            }
+        )
+    else:
+        llm_error = getattr(app.state, "llm_error", "LLM not initialized")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ready": False,
+                "error": llm_error,
+            }
+        )
+
+
 @app.options("/api/chat")
 async def chat_options() -> Response:
     """Handle CORS preflight for /api/chat"""
@@ -687,6 +739,20 @@ async def governed_chat(request: Request, identity: IdentityContext = Depends(wa
     budget_ms_total = api_chat_total_timeout_ms()
     rid = _request_id(request)
     http_timeout_ms = int(outbound_http_timeout_s() * 1000)
+    
+    # Check LLM readiness before processing
+    if not getattr(request.app.state, "llm_ok", False):
+        llm_error = getattr(request.app.state, "llm_error", "LLM not configured")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "LLM_NOT_CONFIGURED",
+                "message": "LLM provider base URL / API key not configured in environment variables.",
+                "required": ["LLM_API_BASE=https://api.openai.com/v1", "OPENAI_API_KEY=***"],
+                "checked_envs": ["LLM_API_BASE", "OPENAI_BASE_URL", "MODEL_BASE_URL", "MODEL_PROVIDER_BASE_URL", "API_BASE", "OPENAI_API_KEY", "LLM_API_KEY", "MODEL_API_KEY", "OPENAI_KEY", "API_KEY"],
+                "detail": llm_error,
+            }
+        )
 
     async def _process() -> ContractChatResponse | JSONResponse:
         try:

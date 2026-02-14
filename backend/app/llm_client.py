@@ -42,18 +42,18 @@ def _resolve_api_base() -> Optional[str]:
     """Resolve API base URL from env vars with fallbacks.
     
     Checks in order:
-    1. LLM_API_BASE
-    2. MODEL_BASE_URL
-    3. MODEL_PROVIDER_BASE_URL
-    4. API_BASE
-    5. OPENAI_BASE_URL
+    1. LLM_API_BASE (preferred)
+    2. OPENAI_BASE_URL (OpenAI-specific)
+    3. MODEL_BASE_URL
+    4. MODEL_PROVIDER_BASE_URL
+    5. API_BASE
     6. Default to OpenAI if provider suggests it
     
     Returns:
         API base URL or None if not found
     """
-    # Try env vars in priority order
-    for env_var in ["LLM_API_BASE", "MODEL_BASE_URL", "MODEL_PROVIDER_BASE_URL", "API_BASE", "OPENAI_BASE_URL"]:
+    # Try env vars in priority order (OpenAI vars prioritized)
+    for env_var in ["LLM_API_BASE", "OPENAI_BASE_URL", "MODEL_BASE_URL", "MODEL_PROVIDER_BASE_URL", "API_BASE"]:
         value = os.getenv(env_var)
         if value:
             logger.info(f"Resolved api_base from {env_var}")
@@ -63,7 +63,7 @@ def _resolve_api_base() -> Optional[str]:
     provider = os.getenv("MODEL_PROVIDER", "").lower()
     if "openai" in provider:
         logger.info("Defaulting to OpenAI base URL based on provider")
-        return "https://api.openai.com/v1/chat/completions"
+        return "https://api.openai.com/v1"
     
     return None
 
@@ -72,15 +72,16 @@ def _resolve_api_key() -> Optional[str]:
     """Resolve API key from env vars with fallbacks.
     
     Checks in order:
-    1. LLM_API_KEY
-    2. MODEL_API_KEY
-    3. API_KEY
-    4. OPENAI_API_KEY
+    1. OPENAI_API_KEY (OpenAI-specific, preferred)
+    2. LLM_API_KEY
+    3. MODEL_API_KEY
+    4. OPENAI_KEY (alternative OpenAI)
+    5. API_KEY
     
     Returns:
         API key or None if not found
     """
-    for env_var in ["LLM_API_KEY", "MODEL_API_KEY", "API_KEY", "OPENAI_API_KEY"]:
+    for env_var in ["OPENAI_API_KEY", "LLM_API_KEY", "MODEL_API_KEY", "OPENAI_KEY", "API_KEY"]:
         value = os.getenv(env_var)
         if value:
             logger.info(f"Resolved api_key from {env_var}")
@@ -116,14 +117,14 @@ class LLMClient:
         
         # Validate and log config (safe - no secrets)
         if not self.api_base:
-            checked_vars = "LLM_API_BASE, MODEL_BASE_URL, MODEL_PROVIDER_BASE_URL, API_BASE, OPENAI_BASE_URL"
+            checked_vars = "LLM_API_BASE, OPENAI_BASE_URL, MODEL_BASE_URL, MODEL_PROVIDER_BASE_URL, API_BASE"
             raise RuntimeError(
                 f"LLM api_base not configured. Checked env vars: {checked_vars}. "
                 "Set one of these environment variables with your LLM provider's base URL."
             )
         
         if not self.api_key:
-            checked_vars = "LLM_API_KEY, MODEL_API_KEY, API_KEY, OPENAI_API_KEY"
+            checked_vars = "OPENAI_API_KEY, LLM_API_KEY, MODEL_API_KEY, OPENAI_KEY, API_KEY"
             raise RuntimeError(
                 f"LLM api_key not configured. Checked env vars: {checked_vars}. "
                 "Set one of these environment variables with your LLM provider's API key."

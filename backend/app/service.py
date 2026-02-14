@@ -29,8 +29,13 @@ logger = logging.getLogger(__name__)
 
 
 class ConversationService:
-    def __init__(self) -> None:
-        self.llm = LLMClient()
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
+        """Initialize ConversationService.
+        
+        Args:
+            llm_client: Optional pre-initialized LLMClient. If None, will be set later.
+        """
+        self.llm = llm_client
 
     def handle_message(self, session_id: str, text: str) -> ChatResponse:
         # 1) Intent + style + user message
