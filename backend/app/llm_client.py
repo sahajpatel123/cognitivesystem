@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any, Dict, Union, Optional
 
@@ -37,6 +38,57 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 
+def _resolve_api_base() -> Optional[str]:
+    """Resolve API base URL from env vars with fallbacks.
+    
+    Checks in order:
+    1. LLM_API_BASE
+    2. MODEL_BASE_URL
+    3. MODEL_PROVIDER_BASE_URL
+    4. API_BASE
+    5. OPENAI_BASE_URL
+    6. Default to OpenAI if provider suggests it
+    
+    Returns:
+        API base URL or None if not found
+    """
+    # Try env vars in priority order
+    for env_var in ["LLM_API_BASE", "MODEL_BASE_URL", "MODEL_PROVIDER_BASE_URL", "API_BASE", "OPENAI_BASE_URL"]:
+        value = os.getenv(env_var)
+        if value:
+            logger.info(f"Resolved api_base from {env_var}")
+            return value
+    
+    # Check if provider suggests OpenAI
+    provider = os.getenv("MODEL_PROVIDER", "").lower()
+    if "openai" in provider:
+        logger.info("Defaulting to OpenAI base URL based on provider")
+        return "https://api.openai.com/v1/chat/completions"
+    
+    return None
+
+
+def _resolve_api_key() -> Optional[str]:
+    """Resolve API key from env vars with fallbacks.
+    
+    Checks in order:
+    1. LLM_API_KEY
+    2. MODEL_API_KEY
+    3. API_KEY
+    4. OPENAI_API_KEY
+    
+    Returns:
+        API key or None if not found
+    """
+    for env_var in ["LLM_API_KEY", "MODEL_API_KEY", "API_KEY", "OPENAI_API_KEY"]:
+        value = os.getenv(env_var)
+        if value:
+            logger.info(f"Resolved api_key from {env_var}")
+            return value
+    
+    return None
+
+
 class LLMClient:
     """Model-agnostic HTTP client for the reasoning and expression models.
 
@@ -57,8 +109,40 @@ class LLMClient:
         request_id_value: Optional[str] = None,
     ) -> None:
         s = get_settings()
-        self.api_base = api_base or s.model_base_url or s.model_provider_base_url or s.llm_api_base
-        self.api_key = api_key or s.model_api_key or s.llm_api_key
+        
+        # Robust config resolution: try passed params, then settings, then env vars
+        self.api_base = api_base or s.model_base_url or s.model_provider_base_url or s.llm_api_base or _resolve_api_base()
+        self.api_key = api_key or s.model_api_key or s.llm_api_key or _resolve_api_key()
+        
+        # Validate and log config (safe - no secrets)
+        if not self.api_base:
+            checked_vars = "LLM_API_BASE, MODEL_BASE_URL, MODEL_PROVIDER_BASE_URL, API_BASE, OPENAI_BASE_URL"
+            raise RuntimeError(
+                f"LLM api_base not configured. Checked env vars: {checked_vars}. "
+                "Set one of these environment variables with your LLM provider's base URL."
+            )
+        
+        if not self.api_key:
+            checked_vars = "LLM_API_KEY, MODEL_API_KEY, API_KEY, OPENAI_API_KEY"
+            raise RuntimeError(
+                f"LLM api_key not configured. Checked env vars: {checked_vars}. "
+                "Set one of these environment variables with your LLM provider's API key."
+            )
+        
+        # Extract domain for safe logging (no secrets)
+        api_base_domain = self.api_base.split("//")[-1].split("/")[0] if "//" in self.api_base else self.api_base.split("/")[0]
+        
+        logger.info(
+            "LLM config loaded",
+            extra={
+                "api_base_domain": api_base_domain,
+                "api_key_present": bool(self.api_key),
+                "provider": s.model_provider,
+                "reasoning_model": s.llm_reasoning_model,
+                "expression_model": s.llm_expression_model,
+            }
+        )
+        
         self.timeout_seconds = timeout_seconds or float(s.model_timeout_seconds)
         self.connect_timeout_seconds = connect_timeout_seconds or float(s.model_connect_timeout_seconds)
         self.request_id_header = request_id_header or s.request_id_header
