@@ -197,6 +197,16 @@ class LLMClient:
             read=outbound_http_read_timeout_s(),
         )
 
+        # Connectivity sanity log
+        base_url_sanitized = self.api_base.split("//")[-1].split("/")[0] if "//" in self.api_base else self.api_base
+        logger.info(
+            "[LLM] Connectivity check",
+            extra={
+                "resolved_base_url": base_url_sanitized,
+                "final_url": url,
+            }
+        )
+        
         # Log request details (no secrets)
         logger.info(
             "[LLM] HTTP request",
@@ -274,6 +284,7 @@ class LLMClient:
             ) from exc
         except httpx.HTTPError as exc:
             # Other HTTP errors (connection, DNS, etc.)
+            base_url_sanitized = self.api_base.split("//")[-1].split("/")[0] if "//" in self.api_base else self.api_base
             logger.error(
                 "[LLM] HTTP connection error",
                 extra={
@@ -283,6 +294,7 @@ class LLMClient:
                     "timeout_seconds": self.timeout_seconds,
                     "exception_class": type(exc).__name__,
                     "exception_message": str(exc),
+                    "base_url": base_url_sanitized,
                 }
             )
             raise build_failure(
